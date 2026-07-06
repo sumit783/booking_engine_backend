@@ -67,12 +67,22 @@ export const sendOTPEmail = async (email, otp, purpose = "login") => {
     </html>
   `;
 
-  await transporter.sendMail({
-    from: process.env.SMTP_FROM || '"Booking Engine" <no-reply@bookingengine.com>',
-    to: email,
-    subject: `${otp} is your Booking Engine OTP`,
-    html,
-  });
+  if (!process.env.SMTP_HOST) {
+    console.warn(`[MAILER] SMTP_HOST not set. Mocking email to ${email} for ${purpose}. OTP: ${otp}`);
+    return;
+  }
+
+  try {
+    await transporter.sendMail({
+      from: process.env.SMTP_FROM || '"Booking Engine" <no-reply@bookingengine.com>',
+      to: email,
+      subject: `${otp} is your Booking Engine OTP`,
+      html,
+    });
+  } catch (err) {
+    console.error("[MAILER] Failed to send OTP email:", err);
+    throw new Error("Failed to send OTP email");
+  }
 };
 
 /**
@@ -141,10 +151,20 @@ export const sendStaffInviteEmail = async (email, otp, ownerName) => {
     </html>
   `;
 
-  await transporter.sendMail({
-    from: process.env.SMTP_FROM || '"Booking Engine" <no-reply@bookingengine.com>',
-    to: email,
-    subject: `${ownerName} invited you to Booking Engine — your login code: ${otp}`,
-    html,
-  });
+  if (!process.env.SMTP_HOST) {
+    console.warn(`[MAILER] SMTP_HOST not set. Mocking staff invite to ${email}. OTP: ${otp}`);
+    return;
+  }
+
+  try {
+    await transporter.sendMail({
+      from: process.env.SMTP_FROM || '"Booking Engine" <no-reply@bookingengine.com>',
+      to: email,
+      subject: `${ownerName} invited you to Booking Engine — your login code: ${otp}`,
+      html,
+    });
+  } catch (err) {
+    console.error("[MAILER] Failed to send staff invite email:", err);
+    throw new Error("Failed to send invite email");
+  }
 };
