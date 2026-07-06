@@ -11,6 +11,7 @@ import propertyStaffRouter from "./routes/property/propertyStaff.routes.js";
 import adminTemplateRouter from "./routes/admin/admin.template.routes.js";
 import websiteRouter from "./routes/website/website.routes.js";
 import ApiError from "./utils/apiError.js";
+import connectDB from "./config/db.js";
 
 const app = express();
 
@@ -38,6 +39,16 @@ app.use(cookieParser());
 // ── Health check ─────────────────────────────────────────────────────────────
 app.get("/health", (_req, res) => {
   res.json({ status: "ok", timestamp: new Date().toISOString() });
+});
+
+// ── Ensure DB Connection for Serverless ──────────────────────────────────────
+app.use(async (req, res, next) => {
+  try {
+    await connectDB();
+    next();
+  } catch (error) {
+    next(error);
+  }
 });
 
 // ── API Routes ────────────────────────────────────────────────────────────────
