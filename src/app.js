@@ -7,7 +7,7 @@ import adminAuthRouter from "./routes/auth/admin.auth.routes.js";
 import userRouter from "./routes/auth/user.routes.js";
 import propertyRouter from "./routes/property/property.routes.js";
 import adminPropertyRouter from "./routes/property/admin.property.routes.js";
-import propertyStaffRouter from "./routes/property/propertyStaff.routes.js";
+
 import adminTemplateRouter from "./routes/admin/admin.template.routes.js";
 import websiteRouter from "./routes/website/website.routes.js";
 import ApiError from "./utils/apiError.js";
@@ -56,7 +56,7 @@ app.use("/api/v1/auth/user", userAuthRouter);   // OTP login / refresh / logout
 app.use("/api/v1/auth/admin", adminAuthRouter); // Supabase admin auth
 app.use("/api/v1/users", userRouter);           // Owner signup, staff management
 app.use("/api/v1/properties", propertyRouter);  // Property CRUD + uploads
-app.use("/api/v1/properties/staff", propertyStaffRouter); // Property staff CRUD
+
 app.use("/api/v1/admin/properties", adminPropertyRouter); // Admin property verification
 app.use("/api/v1/admin/templates", adminTemplateRouter);  // Admin templates
 app.use("/api/v1/website", websiteRouter);                // Public website builder API
