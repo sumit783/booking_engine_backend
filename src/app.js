@@ -55,8 +55,8 @@ app.use(async (req, res, next) => {
 app.use("/api/v1/auth/user", userAuthRouter);   // OTP login / refresh / logout
 app.use("/api/v1/auth/admin", adminAuthRouter); // Supabase admin auth
 app.use("/api/v1/users", userRouter);           // Owner signup, staff management
-app.use("/api/v1/properties", propertyRouter);  // Property CRUD + uploads
 app.use("/api/v1/properties/staff", propertyStaffRouter); // Property staff CRUD
+app.use("/api/v1/properties", propertyRouter);  // Property CRUD + uploads
 app.use("/api/v1/admin/properties", adminPropertyRouter); // Admin property verification
 app.use("/api/v1/admin/templates", adminTemplateRouter);  // Admin templates
 app.use("/api/v1/website", websiteRouter);                // Public website builder API
