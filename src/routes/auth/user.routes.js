@@ -5,7 +5,7 @@ import {
   getStaff,
   removeStaff,
 } from "../../controllers/auth/user.controller.js";
-import { verifyUserToken, requireRole } from "../../middleware/auth.middleware.js";
+import { verifyUserToken, requireRole, requireVerifiedProperty } from "../../middleware/auth.middleware.js";
 import { otpRateLimiter } from "../../middleware/rateLimiter.middleware.js";
 
 const router = Router();
@@ -21,7 +21,8 @@ router.post("/signup", otpRateLimiter, ownerSignup);
 // (add profile, settings routes here later)
 
 // ── Protected: owner only ─────────────────────────────────────────────────────
-const ownerOnly = [verifyUserToken, requireRole("owner")];
+const ownerOnly = [verifyUserToken, requireRole("owner"), requireVerifiedProperty];
+
 
 // POST   /api/v1/users/staff          → create a staff member + send invite
 // GET    /api/v1/users/staff          → list all staff

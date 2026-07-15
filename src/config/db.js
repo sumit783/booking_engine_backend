@@ -1,27 +1,19 @@
-import mongoose from "mongoose";
+import { PrismaClient } from "@prisma/client";
 
-let isConnected = false;
+const prisma = new PrismaClient({
+  log: process.env.NODE_ENV === "production" ? ["error"] : ["query", "info", "warn", "error"],
+});
 
 const connectDB = async () => {
-  mongoose.set("strictQuery", true);
-  
-  if (isConnected) {
-    return;
-  }
-
-  if (mongoose.connections.length > 0 && mongoose.connections[0].readyState === 1) {
-    isConnected = true;
-    return;
-  }
-
   try {
-    const conn = await mongoose.connect(process.env.MONGODB_URI);
-    isConnected = conn.connections[0].readyState === 1;
-    console.log(`✅ MongoDB connected: ${conn.connection.host}`);
+    await prisma.$connect();
+    console.log("✅ MySQL connected via Prisma");
+    return prisma;
   } catch (error) {
-    console.error(`❌ MongoDB connection error: ${error.message}`);
-    throw error; // Throw error instead of process.exit for serverless
+    console.error(`❌ MySQL connection error via Prisma: ${error.message}`);
+    throw error;
   }
 };
 
+export { prisma };
 export default connectDB;

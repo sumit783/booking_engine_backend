@@ -1,26 +1,303 @@
 import asyncHandler from "../../utils/asyncHandler.js";
 import ApiError from "../../utils/apiError.js";
 import ApiResponse from "../../utils/apiResponse.js";
-import Property from "../../models/property/property.model.js";
+import { prisma } from "../../config/db.js";
+
+// Helper: Format single property to map id to _id for backward compatibility
+const formatProperty = (property) => {
+  if (!property) return null;
+  const formatted = {
+    ...property,
+    _id: property.id,
+  };
+  if (property.template) {
+    formatted.websiteBuilder = {
+      ...(property.websiteBuilder || {}),
+      template: {
+        ...property.template,
+        _id: property.template.id,
+      },
+    };
+    delete formatted.template;
+  }
+  return formatted;
+};
 
 // ── GET /api/v1/website/:slug ────────────────────────────────────────────────
 // Public route to fetch all necessary data for the website builder
 export const getWebsiteData = asyncHandler(async (req, res) => {
   const { slug } = req.params;
 
-  // We find the property by its slug and populate necessary data
-  const property = await Property.findOne({ propertySlug: slug })
-    .populate("websiteBuilder.template", "name description previewImage url")
-    .select("-verification -documents -bank -rejectionReason");
+  const property = await prisma.property.findFirst({
+    where: { propertySlug: slug },
+    select: {
+      id: true,
+      userId: true,
+      propertyName: true,
+      propertySlug: true,
+      propertyType: true,
+      description: true,
+      establishedYear: true,
+      totalRooms: true,
+      totalFloors: true,
+      checkInTime: true,
+      checkOutTime: true,
+      website: true,
+      logo: true,
+      coverImage: true,
+      gallery: true,
+      address: true,
+      location: true,
+      contact: true,
+      amenities: true,
+      policies: true,
+      websiteBuilder: true,
+      template: {
+        select: { id: true, name: true, description: true, previewImage: true },
+      },
+      status: true,
+      approvedBy: true,
+      approvedAt: true,
+      createdAt: true,
+      updatedAt: true,
+    },
+  });
 
-  if (!property) {
-    throw new ApiError(404, "Property not found");
-  }
-
-  // Ensure only published properties are accessible (unless we want to allow preview)
-  // For now we'll allow fetching but can optionally check property.websiteBuilder.isPublished
+  if (!property) throw new ApiError(404, "Property not found");
 
   res.status(200).json(
-    new ApiResponse(200, "Website data fetched successfully", { property })
+    new ApiResponse(200, "Website data fetched successfully", { property: formatProperty(property) })
+  );
+});
+
+// ── GET /api/v1/website/properties/all ────────────────────────────────────
+// Public route: list all active/approved properties for the landing page
+export const getAllPublicProperties = asyncHandler(async (req, res) => {
+  const properties = await prisma.property.findMany({
+    where: { 
+      status: "APPROVED",
+      isDeleted: false,
+    },
+    select: {
+      id: true,
+      propertyName: true,
+      propertySlug: true,
+      propertyType: true,
+      description: true,
+      location: true,
+      coverImageMimeType: true,
+      website: true,
+    },
+    orderBy: { createdAt: "desc" }
+  });
+
+  const baseUrl = `${req.protocol}://${req.get("host")}`;
+
+  const formatted = properties.map(p => ({
+    id: p.id,
+    name: p.propertyName,
+    slug: p.propertySlug,
+    type: p.propertyType,
+    description: p.description,
+    location: p.location,
+    website: p.website,
+    coverImageUrl: p.coverImageMimeType ? `${baseUrl}/api/v1/properties/${p.id}/cover` : null,
+  }));
+
+  res.status(200).json(
+    new ApiResponse(200, "Public properties fetched successfully", formatted)
+  );
+});
+
+// ── GET /api/v1/website/:slug/rooms ─────────────────────────────────────────
+// Public route: list rooms for a property by slug
+export const getPublicRooms = asyncHandler(async (req, res) => {
+  const { slug } = req.params;
+
+  const property = await prisma.property.findFirst({
+    where: { propertySlug: slug },
+    select: { id: true, propertyName: true, propertySlug: true, checkInTime: true, checkOutTime: true, website: true },
+  });
+  if (!property) throw new ApiError(404, "Property not found");
+
+  const rooms = await prisma.room.findMany({
+    where: { propertyId: property.id },
+    include: { images: { select: { id: true, mimeType: true } } },
+    orderBy: { createdAt: "asc" },
+  });
+
+  const baseUrl = `${req.protocol}://${req.get("host")}`;
+
+  const formatted = rooms.map((room) => ({
+    id: room.id,
+    name: room.name,
+    description: room.description,
+    capacity: room.capacity,
+    quantity: room.quantity,
+    basePrice: Number(room.basePrice),
+    amenities: room.amenities || [],
+    images: room.images.map((img) => ({
+      id: img.id,
+      url: `${baseUrl}/api/v1/properties/rooms/images/${img.id}`,
+    })),
+  }));
+
+  res.status(200).json(
+    new ApiResponse(200, "Rooms fetched", {
+      property: {
+        id: property.id,
+        name: property.propertyName,
+        slug: property.propertySlug,
+        website: property.website,
+        checkInTime: property.checkInTime,
+        checkOutTime: property.checkOutTime,
+      },
+      rooms: formatted,
+    })
+  );
+});
+
+// ── GET /api/v1/website/:slug/packages ──────────────────────────────────────
+// Public route: list packages for a property by slug
+export const getPublicPackages = asyncHandler(async (req, res) => {
+  const { slug } = req.params;
+
+  const property = await prisma.property.findFirst({
+    where: { propertySlug: slug },
+    select: { id: true, propertyName: true, propertySlug: true, checkInTime: true, checkOutTime: true },
+  });
+  if (!property) throw new ApiError(404, "Property not found");
+
+  const packages = await prisma.package.findMany({
+    where: { propertyId: property.id, isDeleted: false },
+    include: { images: { select: { id: true, mimeType: true } } },
+    orderBy: { createdAt: "asc" },
+  });
+
+  const baseUrl = `${req.protocol}://${req.get("host")}`;
+
+  const formatted = packages.map((pkg) => ({
+    id: pkg.id,
+    name: pkg.name,
+    description: pkg.description,
+    price: Number(pkg.price),
+    activities: pkg.activities || [],
+    images: pkg.images.map((img) => ({
+      id: img.id,
+      url: `${baseUrl}/api/v1/properties/packages/images/${img.id}`,
+    })),
+  }));
+
+  res.status(200).json(
+    new ApiResponse(200, "Packages fetched", {
+      property: {
+        id: property.id,
+        name: property.propertyName,
+        slug: property.propertySlug,
+        website: property.website,
+      },
+      packages: formatted,
+    })
+  );
+});
+
+// ── GET /api/v1/website/:slug/rooms/featured ──────────────────────────────
+// Public route: list top 3 rooms for a property by slug
+export const getFeaturedRooms = asyncHandler(async (req, res) => {
+  const { slug } = req.params;
+
+  const property = await prisma.property.findFirst({
+    where: { propertySlug: slug },
+    select: { id: true, propertyName: true, propertySlug: true, website: true },
+  });
+  if (!property) throw new ApiError(404, "Property not found");
+
+  const rooms = await prisma.room.findMany({
+    where: { propertyId: property.id },
+    include: { images: { select: { id: true, mimeType: true } } },
+    orderBy: { createdAt: "asc" },
+    take: 3,
+  });
+
+  const baseUrl = `${req.protocol}://${req.get("host")}`;
+  const formatted = rooms.map((room) => ({
+    id: room.id,
+    name: room.name,
+    description: room.description,
+    capacity: room.capacity,
+    quantity: room.quantity,
+    basePrice: Number(room.basePrice),
+    amenities: room.amenities || [],
+    images: room.images.map((img) => ({
+      id: img.id,
+      url: `${baseUrl}/api/v1/properties/rooms/images/${img.id}`,
+    })),
+  }));
+
+  res.status(200).json(
+    new ApiResponse(200, "Featured rooms fetched", { rooms: formatted })
+  );
+});
+
+// ── GET /api/v1/website/:slug/packages/featured ───────────────────────────
+// Public route: list top 3 packages for a property by slug
+export const getFeaturedPackages = asyncHandler(async (req, res) => {
+  const { slug } = req.params;
+
+  const property = await prisma.property.findFirst({
+    where: { propertySlug: slug },
+    select: { id: true, propertyName: true, propertySlug: true, website: true },
+  });
+  if (!property) throw new ApiError(404, "Property not found");
+
+  const packages = await prisma.package.findMany({
+    where: { propertyId: property.id, isDeleted: false },
+    include: { images: { select: { id: true, mimeType: true } } },
+    orderBy: { createdAt: "asc" },
+    take: 3,
+  });
+
+  const baseUrl = `${req.protocol}://${req.get("host")}`;
+  const formatted = packages.map((pkg) => ({
+    id: pkg.id,
+    name: pkg.name,
+    description: pkg.description,
+    price: Number(pkg.price),
+    activities: pkg.activities || [],
+    images: pkg.images.map((img) => ({
+      id: img.id,
+      url: `${baseUrl}/api/v1/properties/packages/images/${img.id}`,
+    })),
+  }));
+
+  res.status(200).json(
+    new ApiResponse(200, "Featured packages fetched", { packages: formatted })
+  );
+});
+
+// ── GET /api/v1/website/:slug/extras ────────────────────────────────────────
+// Public route: list extra packages (add-ons) for a property by slug
+export const getPublicExtraPackages = asyncHandler(async (req, res) => {
+  const { slug } = req.params;
+
+  const property = await prisma.property.findFirst({
+    where: { propertySlug: slug },
+    select: { id: true, propertyName: true },
+  });
+  if (!property) throw new ApiError(404, "Property not found");
+
+  const extras = await prisma.extraPackage.findMany({
+    where: { propertyId: property.id, isActive: true },
+    orderBy: { createdAt: "asc" },
+  });
+
+  res.status(200).json(
+    new ApiResponse(200, "Extra packages fetched", {
+      property: {
+        id: property.id,
+        name: property.propertyName,
+      },
+      extras,
+    })
   );
 });

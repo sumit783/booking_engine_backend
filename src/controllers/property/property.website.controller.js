@@ -1,16 +1,33 @@
-import Property from "../../models/property/property.model.js";
-import Template from "../../models/admin/template.model.js";
+import { prisma } from "../../config/db.js";
 import ApiError from "../../utils/apiError.js";
 import asyncHandler from "../../utils/asyncHandler.js";
+
+// Helper: Format single property to map id to _id for backward compatibility
+const formatProperty = (property) => {
+  if (!property) return null;
+  return {
+    ...property,
+    _id: property.id,
+  };
+};
 
 // @desc    Get all active website templates
 // @route   GET /api/v1/properties/templates
 // @access  Owner (or Public, but Owner for selection)
 export const getActiveTemplates = asyncHandler(async (req, res) => {
-  const templates = await Template.find({ isActive: true }).sort({ createdAt: -1 });
+  const templates = await prisma.template.findMany({
+    where: { isActive: true },
+    orderBy: { createdAt: "desc" },
+  });
+  
+  const formattedTemplates = templates.map((t) => ({
+    ...t,
+    _id: t.id,
+  }));
+
   res.status(200).json({
     success: true,
-    data: templates,
+    data: formattedTemplates,
   });
 });
 
@@ -24,26 +41,38 @@ export const updateWebsiteTemplate = asyncHandler(async (req, res) => {
     throw new ApiError(400, "Template ID is required");
   }
 
-  const template = await Template.findOne({ _id: templateId, isActive: true });
+  const template = await prisma.template.findFirst({
+    where: { id: Number(templateId), isActive: true },
+  });
   if (!template) {
     throw new ApiError(404, "Template not found or inactive");
   }
 
-  const property = await Property.findOne({
-    _id: req.params.id,
-    userId: req.user._id,
-    isDeleted: false,
+  const property = await prisma.property.findFirst({
+    where: {
+      id: Number(req.params.id),
+      userId: req.user.id,
+      isDeleted: false,
+    },
   });
 
   if (!property) throw new ApiError(404, "Property not found");
 
-  property.websiteBuilder.template = templateId;
-  await property.save();
+  const wb = { ...(property.websiteBuilder || {}) };
+  wb.template = templateId;
+
+  const updated = await prisma.property.update({
+    where: { id: property.id },
+    data: {
+      websiteBuilder: wb,
+      templateId: Number(templateId),
+    },
+  });
 
   res.status(200).json({
     success: true,
     message: "Website template updated successfully",
-    data: property.websiteBuilder,
+    data: updated.websiteBuilder,
   });
 });
 
@@ -53,36 +82,45 @@ export const updateWebsiteTemplate = asyncHandler(async (req, res) => {
 export const updateWebsiteBuilder = asyncHandler(async (req, res) => {
   const { heroBanner, about, facilities, socialLinks, seoSettings } = req.body;
 
-  const property = await Property.findOne({
-    _id: req.params.id,
-    userId: req.user._id,
-    isDeleted: false,
+  const property = await prisma.property.findFirst({
+    where: {
+      id: Number(req.params.id),
+      userId: req.user.id,
+      isDeleted: false,
+    },
   });
 
   if (!property) throw new ApiError(404, "Property not found");
 
-  if (heroBanner !== undefined) property.websiteBuilder.heroBanner = heroBanner;
-  if (about !== undefined) property.websiteBuilder.about = about;
-  if (facilities !== undefined) property.websiteBuilder.facilities = facilities;
+  const wb = { ...(property.websiteBuilder || {}) };
+
+  if (heroBanner !== undefined) wb.heroBanner = heroBanner;
+  if (about !== undefined) wb.about = about;
+  if (facilities !== undefined) wb.facilities = facilities;
   
   if (socialLinks) {
-    if (socialLinks.facebook !== undefined) property.websiteBuilder.socialLinks.facebook = socialLinks.facebook;
-    if (socialLinks.instagram !== undefined) property.websiteBuilder.socialLinks.instagram = socialLinks.instagram;
-    if (socialLinks.twitter !== undefined) property.websiteBuilder.socialLinks.twitter = socialLinks.twitter;
+    if (!wb.socialLinks) wb.socialLinks = {};
+    if (socialLinks.facebook !== undefined) wb.socialLinks.facebook = socialLinks.facebook;
+    if (socialLinks.instagram !== undefined) wb.socialLinks.instagram = socialLinks.instagram;
+    if (socialLinks.twitter !== undefined) wb.socialLinks.twitter = socialLinks.twitter;
   }
 
   if (seoSettings) {
-    if (seoSettings.metaTitle !== undefined) property.websiteBuilder.seoSettings.metaTitle = seoSettings.metaTitle;
-    if (seoSettings.metaDescription !== undefined) property.websiteBuilder.seoSettings.metaDescription = seoSettings.metaDescription;
-    if (seoSettings.keywords !== undefined) property.websiteBuilder.seoSettings.keywords = seoSettings.keywords;
+    if (!wb.seoSettings) wb.seoSettings = {};
+    if (seoSettings.metaTitle !== undefined) wb.seoSettings.metaTitle = seoSettings.metaTitle;
+    if (seoSettings.metaDescription !== undefined) wb.seoSettings.metaDescription = seoSettings.metaDescription;
+    if (seoSettings.keywords !== undefined) wb.seoSettings.keywords = seoSettings.keywords;
   }
 
-  await property.save();
+  const updated = await prisma.property.update({
+    where: { id: property.id },
+    data: { websiteBuilder: wb },
+  });
 
   res.status(200).json({
     success: true,
     message: "Website builder updated successfully",
-    data: property.websiteBuilder,
+    data: updated.websiteBuilder,
   });
 });
 
@@ -90,37 +128,44 @@ export const updateWebsiteBuilder = asyncHandler(async (req, res) => {
 // @route   POST /api/v1/properties/:id/website-publish
 // @access  Owner
 export const publishWebsite = asyncHandler(async (req, res) => {
-  const property = await Property.findOne({
-    _id: req.params.id,
-    userId: req.user._id,
-    isDeleted: false,
+  const property = await prisma.property.findFirst({
+    where: {
+      id: Number(req.params.id),
+      userId: req.user.id,
+      isDeleted: false,
+    },
   });
 
   if (!property) throw new ApiError(404, "Property not found");
 
-  property.websiteBuilder.isPublished = true;
-  // If property is already live, maybe this section needs reverification, or maybe we just set the section to pending
-  // Similar to submitForApproval, we set the specific section status to PENDING so admin can verify it
-  property.verification.websiteBuilder.status = "PENDING";
-  property.verification.websiteBuilder.message = undefined;
+  const wb = { ...(property.websiteBuilder || {}) };
+  wb.isPublished = true;
 
-  // If the property itself is APPROVED but a section became PENDING, do we transition property status?
-  // Let's keep it simple: just mark the section PENDING and if needed, property status to PENDING or REUPLOADED.
+  const verificationCopy = { ...(property.verification || {}) };
+  if (!verificationCopy.websiteBuilder) verificationCopy.websiteBuilder = {};
+  verificationCopy.websiteBuilder.status = "PENDING";
+  verificationCopy.websiteBuilder.message = null;
+
+  const data = {
+    websiteBuilder: wb,
+    verification: verificationCopy,
+  };
+
   if (property.status === "APPROVED") {
-    property.status = "REUPLOADED";
-  } else if (property.status === "DRAFT") {
-    // maybe we shouldn't change from draft unless they submit everything?
-    // The prompt just says admin verify at verification process. So setting section to PENDING is enough.
+    data.status = "REUPLOADED";
   }
 
-  await property.save();
+  const updated = await prisma.property.update({
+    where: { id: property.id },
+    data,
+  });
 
   res.status(200).json({
     success: true,
     message: "Website published and submitted for verification",
     data: {
-      isPublished: property.websiteBuilder.isPublished,
-      verification: property.verification.websiteBuilder,
+      isPublished: updated.websiteBuilder.isPublished,
+      verification: updated.verification.websiteBuilder,
     },
   });
 });

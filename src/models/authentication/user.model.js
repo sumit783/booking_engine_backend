@@ -1,134 +1,114 @@
-import mongoose from "mongoose";
+import { DataTypes, Op } from "sequelize";
+import { sequelize } from "../../config/db.js";
 
-const { Schema } = mongoose;
-
-// ── Validators ────────────────────────────────────────────────────────────────
-const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const phoneRegex = /^\+?[1-9]\d{6,14}$/; // E.164-compatible
-
-const userSchema = new Schema(
+const User = sequelize.define(
+  "User",
   {
+    id: {
+      type: DataTypes.INTEGER,
+      primaryKey: true,
+      autoIncrement: true,
+    },
     fullName: {
-      type: String,
-      required: [true, "Full name is required"],
-      trim: true,
-      minlength: [2, "Full name must be at least 2 characters"],
-      maxlength: [100, "Full name cannot exceed 100 characters"],
+      type: DataTypes.STRING(100),
+      allowNull: false,
+      validate: {
+        notEmpty: { msg: "Full name is required" },
+        len: {
+          args: [2, 100],
+          msg: "Full name must be between 2 and 100 characters",
+        },
+      },
     },
-
     email: {
-      type: String,
-      required: [true, "Email is required"],
+      type: DataTypes.STRING(255),
+      allowNull: false,
       unique: true,
-      lowercase: true,
-      trim: true,
       validate: {
-        validator: (v) => emailRegex.test(v),
-        message: "Invalid email address",
+        isEmail: { msg: "Invalid email address" },
+        notEmpty: { msg: "Email is required" },
       },
     },
-
     phone: {
-      type: String,
-      trim: true,
-      sparse: true,
-      validate: {
-        validator: (v) => !v || phoneRegex.test(v),
-        message: "Invalid phone number format",
-      },
+      type: DataTypes.STRING(20),
+      allowNull: true,
     },
-
     isEmailVerified: {
-      type: Boolean,
-      default: false,
+      type: DataTypes.BOOLEAN,
+      defaultValue: false,
     },
-
     status: {
-      type: String,
-      enum: {
-        values: ["pending", "active", "suspended", "blocked"],
-        message: "{VALUE} is not a valid status",
-      },
-      default: "pending",
+      type: DataTypes.ENUM("pending", "active", "suspended", "blocked"),
+      defaultValue: "pending",
     },
-
     role: {
-      type: String,
-      enum: {
-        values: ["owner", "staff"],
-        message: "{VALUE} is not a valid role",
-      },
-      default: "owner",
+      type: DataTypes.ENUM("owner", "staff"),
+      defaultValue: "owner",
     },
-
     avatar: {
-      type: String,
-      trim: true,
+      type: DataTypes.STRING(500),
+      allowNull: true,
     },
-
     lastLoginAt: {
-      type: Date,
-      select: true,
+      type: DataTypes.DATE,
+      allowNull: true,
     },
-
     lastLoginIP: {
-      type: String,
-      select: false, // excluded from queries unless explicitly selected
+      type: DataTypes.STRING(45),
+      allowNull: true,
     },
-
-    // Denormalized reference for fast owner→properties lookup
-    properties: [
-      {
-        type: Schema.Types.ObjectId,
-        ref: "Property",
-      },
-    ],
-
     isDeleted: {
-      type: Boolean,
-      default: false,
-      select: false,
+      type: DataTypes.BOOLEAN,
+      defaultValue: false,
+    },
+    // Virtual getter
+    isActive: {
+      type: DataTypes.VIRTUAL,
+      get() {
+        return this.status === "active" && !this.isDeleted;
+      },
     },
   },
   {
     timestamps: true,
-    toJSON: {
-      virtuals: true,
-      transform(_doc, ret) {
-        ret.id = ret._id;
-        delete ret._id;
-        delete ret.__v;
-        delete ret.isDeleted;
-        return ret;
+    defaultScope: {
+      attributes: { exclude: ["lastLoginIP", "isDeleted"] },
+    },
+    scopes: {
+      withDeleted: {
+        attributes: {},
       },
     },
-    toObject: { virtuals: true },
   }
 );
 
-// ── Indexes ───────────────────────────────────────────────────────────────────
-userSchema.index({ role: 1, status: 1 });
-userSchema.index({ status: 1 });
-
-// ── Virtuals ──────────────────────────────────────────────────────────────────
-userSchema.virtual("isActive").get(function () {
-  return this.status === "active" && !this.isDeleted;
-});
-
 // ── Instance methods ──────────────────────────────────────────────────────────
-userSchema.methods.isRestricted = function () {
+User.prototype.isRestricted = function () {
   return this.status === "blocked" || this.status === "suspended";
 };
 
+// For backward compatibility with Mongoose's _id to id mapping in JSON
+User.prototype.toJSON = function () {
+  const values = { ...this.get() };
+  values._id = values.id; // Alias _id for MongoDB compatibility in controller
+  return values;
+};
+
 // ── Static methods ────────────────────────────────────────────────────────────
-userSchema.statics.findByIdActive = async function (id) {
-  return this.findOne({ _id: id, isDeleted: false });
+User.findByIdActive = async function (id) {
+  return this.findOne({ where: { id, isDeleted: false } });
 };
 
-userSchema.statics.findStaff = function () {
-  return this.find({ role: "staff", isDeleted: false, status: { $ne: "blocked" } })
-    .select("fullName email phone status isEmailVerified lastLoginAt createdAt")
-    .sort({ createdAt: -1 });
+User.findStaff = function () {
+  return this.findAll({
+    where: {
+      role: "staff",
+      isDeleted: false,
+      status: { [Op.ne]: "blocked" },
+    },
+    attributes: ["id", "fullName", "email", "phone", "status", "isEmailVerified", "lastLoginAt", "createdAt"],
+    order: [["createdAt", "DESC"]],
+  });
 };
 
-export default mongoose.model("User", userSchema);
+export default User;

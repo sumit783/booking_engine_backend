@@ -17,29 +17,11 @@ const docFilter = (_req, file, cb) => {
   cb(new ApiError(400, `${file.fieldname}: only images and PDF files are allowed`));
 };
 
-// ── Cloudinary storage engines ────────────────────────────────────────────────
+// ── Memory storage engines ────────────────────────────────────────────────────
 
-/**
- * Media storage — images only.
- * Uploads into  booking-engine/properties/media/<fieldname>/
- * Auto-quality + format optimisation applied.
- */
-const mediaStorage = new CloudinaryStorage({
-  cloudinary,
-  folder: "booking-engine/properties/media",
-  allowedFormats: ["jpg", "jpeg", "png", "webp"],
-});
+const mediaStorage = multer.memoryStorage();
+const docStorage = multer.memoryStorage();
 
-/**
- * Document storage — images + PDFs.
- * Uploads into  booking-engine/properties/documents/
- * resource_type:"auto" lets Cloudinary detect image vs raw (PDF).
- */
-const docStorage = new CloudinaryStorage({
-  cloudinary,
-  folder: "booking-engine/properties/documents",
-  // resource_type auto is default or we can just let it be
-});
 
 // ── Named multer uploaders ────────────────────────────────────────────────────
 
@@ -58,15 +40,7 @@ export const uploadMedia = multer({
   { name: "gallery",    maxCount: 10 },
 ]);
 
-/**
- * Template Media storage — images only.
- * Uploads into booking-engine/templates/media/
- */
-const templateMediaStorage = new CloudinaryStorage({
-  cloudinary,
-  folder: "booking-engine/templates/media",
-  allowedFormats: ["jpg", "jpeg", "png", "webp"],
-});
+const templateMediaStorage = multer.memoryStorage();
 
 /**
  * Template media upload: previewImage
@@ -111,6 +85,27 @@ export const uploadBankDocs = multer({
   { name: "panCard",         maxCount: 1 },
 ]);
 
+/**
+ * Room media upload: images (up to 10)
+ * Content-Type: multipart/form-data
+ * Max per file: 5 MB
+ */
+export const uploadRoomImages = multer({
+  storage:    mediaStorage,
+  fileFilter: imageFilter,
+  limits:     { fileSize: 5 * 1024 * 1024 },
+}).fields([
+  { name: "images", maxCount: 10 },
+]);
+
+export const uploadPackageImages = multer({
+  storage:    mediaStorage,
+  fileFilter: imageFilter,
+  limits:     { fileSize: 5 * 1024 * 1024 },
+}).fields([
+  { name: "images", maxCount: 10 },
+]);
+
 // ── URL helpers ───────────────────────────────────────────────────────────────
 // With CloudinaryStorage, multer populates file.path with the Cloudinary secure_url.
 
@@ -132,3 +127,16 @@ export const fileUrls = (files, field) => {
   const entries = files?.[field];
   return entries?.length ? entries.map((f) => f.path) : undefined;
 };
+
+/**
+ * Convert a memory-uploaded file to a Base64 Data URI.
+ * @param {object} files req.files from multer
+ * @param {string} field field name
+ * @returns {string|undefined}
+ */
+export const fileToBase64 = (files, field) => {
+  const file = files?.[field]?.[0];
+  if (!file) return undefined;
+  return `data:${file.mimetype};base64,${file.buffer.toString("base64")}`;
+};
+

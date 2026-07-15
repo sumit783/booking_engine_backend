@@ -1,0 +1,401 @@
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id              Int            @id @default(autoincrement())
+  fullName        String         @db.VarChar(100)
+  email           String         @unique @db.VarChar(255)
+  phone           String?        @db.VarChar(20)
+  isEmailVerified Boolean        @default(false)
+  status          String         @default("pending") // "pending", "active", "suspended", "blocked"
+  role            String         @default("owner") // "owner", "staff"
+  avatar          String?        @db.VarChar(500)
+  lastLoginAt     DateTime?
+  lastLoginIP     String?        @db.VarChar(45)
+  isDeleted       Boolean        @default(false)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  refreshTokens   RefreshToken[]
+  properties      Property[]     @relation("OwnerProperties")
+  
+  ownerId         Int?
+  owner           User?          @relation("OwnerStaff", fields: [ownerId], references: [id], onDelete: Cascade)
+  staffMembers    User[]         @relation("OwnerStaff")
+  wallet          Wallet?
+
+  @@index([role, status])
+  @@index([status])
+  @@map("user")
+}
+
+model OTP {
+  id        Int      @id @default(autoincrement())
+  email     String   @db.VarChar(255)
+  otp       String   @db.VarChar(255)
+  purpose   String   @default("login") // "login", "signup", "email_verification"
+  expiresAt DateTime
+  attempts  Int      @default(0)
+  isUsed    Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([email, purpose, isUsed, expiresAt])
+  @@map("otp")
+}
+
+model RefreshToken {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token     String   @db.Text
+  device    String?  @db.VarChar(200)
+  ipAddress String?  @db.VarChar(45)
+  userAgent String?  @db.VarChar(500)
+  expiresAt DateTime
+  isRevoked Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, isRevoked])
+  @@map("refreshtoken")
+}
+
+model Template {
+  id           Int        @id @default(autoincrement())
+  name         String     @unique @db.VarChar(255)
+  description  String?    @db.Text
+  previewImage String?    @db.VarChar(500)
+  isActive     Boolean    @default(true)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  properties   Property[]
+  @@map("template")
+}
+
+model Property {
+  id              Int       @id @default(autoincrement())
+  userId          Int
+  user            User      @relation("OwnerProperties", fields: [userId], references: [id], onDelete: Cascade)
+  propertyName    String    @db.VarChar(150)
+  propertySlug    String    @unique @db.VarChar(255)
+  propertyType    String    @db.VarChar(50) // e.g. HOTEL, RESORT
+  description     String?   @db.Text
+  establishedYear Int?
+  totalRooms      Int       @default(0)
+  totalFloors     Int       @default(0)
+  checkInTime     String?   @db.VarChar(10)
+  checkOutTime    String?   @db.VarChar(10)
+  website         String?   @db.VarChar(255)
+  logo            Bytes?
+  logoMimeType    String?   @db.VarChar(100)
+  coverImage      Bytes?
+  coverImageMimeType String?  @db.VarChar(100)
+  gallery         PropertyGalleryImage[]
+  address         Json? // JSON object
+  location        Json? // JSON object
+  contact         Json? // JSON object
+  amenities       Json? // JSON array
+  policies        Json? // JSON object
+  websiteBuilder  Json? // JSON object
+  templateId      Int?
+  template        Template? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  bank            Json? // JSON object (Sensitive)
+  documents       Json? // JSON object (Sensitive)
+  status          String    @default("DRAFT") // DRAFT, PENDING, APPROVED, REJECTED, REUPLOADED, SUSPENDED
+  rejectionReason String?   @db.VarChar(1000)
+  verification    Json? // JSON object
+  approvedBy      String?   @db.VarChar(255)
+  approvedAt      DateTime?
+  commissionRate  Decimal?  @db.Decimal(5, 2)
+  isDeleted       Boolean   @default(false)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  rooms           Room[]
+  packages        Package[]
+  bookings        Booking[]
+  reviews         Review[]
+  extraPackages   ExtraPackage[]
+
+  @@index([userId])
+  @@index([userId, status])
+  @@index([status, isDeleted])
+  @@index([propertyType, status])
+  @@map("property")
+}
+
+model PropertyGalleryImage {
+  id          Int      @id @default(autoincrement())
+  propertyId  Int
+  property    Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  data        Bytes
+  mimeType    String   @db.VarChar(100)
+  title       String?  @db.VarChar(150)
+  description String?  @db.Text
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([propertyId])
+  @@map("propertygalleryimage")
+}
+
+model Room {
+  id          Int      @id @default(autoincrement())
+  propertyId  Int
+  property    Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  name        String   @db.VarChar(150)
+  description String?  @db.Text
+  capacity    Int
+  quantity    Int
+  basePrice   Decimal  @db.Decimal(10, 2)
+  amenities     Json?         // Array of strings
+  images        RoomImage[]
+  blocks        RoomBlock[]
+  pricingRules  PricingRule[]
+  bookings      Booking[]
+  commissionRate Decimal?  @db.Decimal(5, 2)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([propertyId])
+  @@map("room")
+}
+
+model RoomImage {
+  id        Int      @id @default(autoincrement())
+  roomId    Int
+  room      Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  data      Bytes
+  mimeType  String   @db.VarChar(100)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([roomId])
+  @@map("roomimage")
+}
+
+model Package {
+  id          Int            @id @default(autoincrement())
+  propertyId  Int
+  property    Property       @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  name        String         @db.VarChar(150)
+  description String?        @db.Text
+  price       Decimal        @db.Decimal(10, 2)
+  activities  Json?          // Array of strings
+  images      PackageImage[]
+  bookings    Booking[]
+  commissionRate Decimal?       @db.Decimal(5, 2)
+  isDeleted      Boolean        @default(false)
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  @@index([propertyId])
+  @@map("package")
+}
+
+model PackageImage {
+  id        Int      @id @default(autoincrement())
+  packageId Int
+  package   Package  @relation(fields: [packageId], references: [id], onDelete: Cascade)
+  data      Bytes
+  mimeType  String   @db.VarChar(100)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([packageId])
+  @@map("packageimage")
+}
+
+model RoomBlock {
+  id        Int      @id @default(autoincrement())
+  roomId    Int
+  room      Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  startDate DateTime @db.Date
+  endDate   DateTime @db.Date
+  status    String   @default("BLOCKED") // BLOCKED, MAINTENANCE
+  reason    String?  @db.VarChar(255)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([roomId])
+  @@index([roomId, startDate, endDate])
+  @@map("roomblock")
+}
+
+// Pricing rule types: WEEKDAY, WEEKEND, SEASONAL, FESTIVAL, HOLIDAY, DYNAMIC
+model PricingRule {
+  id               Int      @id @default(autoincrement())
+  roomId           Int
+  room             Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  name             String   @db.VarChar(150)
+  type             String   @db.VarChar(20)  // WEEKDAY|WEEKEND|SEASONAL|FESTIVAL|HOLIDAY|DYNAMIC
+  adjustmentType   String   @db.VarChar(10)  // FIXED | PERCENT
+  adjustmentValue  Decimal  @db.Decimal(10, 2)
+  startDate        DateTime? @db.Date         // For SEASONAL/FESTIVAL/HOLIDAY
+  endDate          DateTime? @db.Date         // For SEASONAL/FESTIVAL/HOLIDAY
+  daysOfWeek       Json?                      // Array of 0-6 for WEEKDAY/WEEKEND
+  minOccupancy     Int?                       // % threshold for DYNAMIC
+  priority         Int      @default(0)
+  isActive         Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([roomId])
+  @@index([roomId, type])
+  @@map("pricingrule")
+}
+
+
+
+model Booking {
+  id           Int      @id @default(autoincrement())
+  bookingRef   String   @unique @db.VarChar(50) // e.g. BK-12345
+  ticketId     String?  @unique @db.VarChar(100) // unique ticket ID for QR code
+  propertyId   Int
+  property     Property @relation(fields: [propertyId], references: [id])
+  roomId       Int?
+  room         Room?    @relation(fields: [roomId], references: [id])
+  packageId    Int?
+  package      Package? @relation(fields: [packageId], references: [id])
+  
+  checkInDate  DateTime @db.Date
+  checkOutDate DateTime @db.Date
+  guests       Int
+  roomCount    Int      @default(1)
+  
+  extraPackages Json?   // Snapshot of selected extras [{ id, name, price, type, quantity, total }]
+  extraPackagesTotal Decimal @default(0.00) @db.Decimal(10, 2)
+  
+  guestName    String   @db.VarChar(150)
+  guestEmail   String?  @db.VarChar(150)
+  guestPhone   String   @db.VarChar(20)
+  
+  totalAmount       Decimal  @db.Decimal(10, 2)
+  status            String   @default("CONFIRMED") // PENDING, CONFIRMED, CANCELLED
+  
+  paymentStatus     String   @default("PENDING") // PENDING, PAID, FAILED, REFUNDED
+  razorpayOrderId   String?  @db.VarChar(100)
+  razorpayPaymentId String?  @db.VarChar(100)
+  razorpaySignature String?  @db.VarChar(200)
+  
+  commissionRate    Decimal  @default(0.00) @db.Decimal(5, 2)
+  commissionAmount  Decimal  @default(0.00) @db.Decimal(10, 2)
+  review            Review?
+  
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  
+  @@index([propertyId])
+  @@index([propertyId, status])
+  @@index([bookingRef])
+  @@map("booking")
+}
+
+model SystemSetting {
+  id        Int      @id @default(autoincrement())
+  key       String   @unique @db.VarChar(100)
+  value     String   @db.Text
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@map("systemsetting")
+}
+
+model Wallet {
+  id              Int                 @id @default(autoincrement())
+  userId          Int                 @unique
+  user            User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  balance         Decimal             @default(0.00) @db.Decimal(10, 2)
+  // Bank transfer details
+  accountNumber   String?             @db.VarChar(30)
+  accountHolder   String?             @db.VarChar(100)
+  ifscCode        String?             @db.VarChar(20)
+  bankName        String?             @db.VarChar(100)
+  // UPI alternative
+  upiId           String?             @db.VarChar(100)
+  transactions    WalletTransaction[]
+  withdrawals     WithdrawalRequest[]
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+  @@map("wallet")
+}
+
+model WalletTransaction {
+  id          Int      @id @default(autoincrement())
+  walletId    Int
+  wallet      Wallet   @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  amount      Decimal  @db.Decimal(10, 2)
+  type        String   @db.VarChar(50) // "BOOKING_EARNING", "WITHDRAWAL"
+  bookingId   Int?
+  description String?  @db.VarChar(255)
+  createdAt   DateTime @default(now())
+
+  @@index([walletId])
+  @@map("wallettransaction")
+}
+
+model WithdrawalRequest {
+  id              Int      @id @default(autoincrement())
+  walletId        Int
+  wallet          Wallet   @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  amount          Decimal  @db.Decimal(10, 2)
+  // Snapshot of payout method at request time
+  payoutMethod    String   @db.VarChar(20)  // "BANK" | "UPI"
+  accountNumber   String?  @db.VarChar(30)
+  accountHolder   String?  @db.VarChar(100)
+  ifscCode        String?  @db.VarChar(20)
+  bankName        String?  @db.VarChar(100)
+  upiId           String?  @db.VarChar(100)
+  // Admin workflow
+  status          String   @default("PENDING") // PENDING | APPROVED | REJECTED | TRANSFERRED
+  adminNote       String?  @db.VarChar(500)
+  reviewedBy      Int?     // admin user id
+  reviewedAt      DateTime?
+  transferredAt   DateTime?
+  transferRef     String?  @db.VarChar(200) // UTR / transaction reference
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([walletId])
+  @@index([status])
+  @@map("withdrawalrequest")
+}
+
+model Review {
+  id          Int      @id @default(autoincrement())
+  bookingId   Int      @unique  // one review per booking
+  booking     Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  propertyId  Int
+  property    Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  guestName   String   @db.VarChar(150)
+  rating      Int      // 1–5
+  title       String?  @db.VarChar(200)
+  comment     String   @db.Text
+  isApproved  Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([propertyId, isApproved])
+  @@map("review")
+}
+
+model ExtraPackage {
+  id          Int      @id @default(autoincrement())
+  propertyId  Int
+  property    Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  name        String   @db.VarChar(150)
+  description String?  @db.Text
+  price       Decimal  @db.Decimal(10, 2)
+  type        String   @default("PER_PERSON") // PER_PERSON, PER_ROOM, PER_BOOKING
+  isActive    Boolean  @default(true)
+  image       String?  @db.VarChar(500)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([propertyId])
+  @@map("extrapackage")
+}

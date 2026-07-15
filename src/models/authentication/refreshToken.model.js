@@ -1,90 +1,113 @@
-import mongoose from "mongoose";
+import { DataTypes, Op } from "sequelize";
+import { sequelize } from "../../config/db.js";
+import User from "./user.model.js";
 
-const { Schema } = mongoose;
-
-const refreshTokenSchema = new Schema(
+const RefreshToken = sequelize.define(
+  "RefreshToken",
   {
-    user: {
-      type: Schema.Types.ObjectId,
-      ref: "User",
-      required: [true, "User reference is required"],
-      index: true,
+    id: {
+      type: DataTypes.INTEGER,
+      primaryKey: true,
+      autoIncrement: true,
     },
-
+    userId: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+      references: {
+        model: User,
+        key: "id",
+      },
+      onDelete: "CASCADE",
+    },
     token: {
-      type: String,
-      required: [true, "Token is required"],
-      select: false, // never leaks in aggregate pipelines
+      type: DataTypes.TEXT,
+      allowNull: false,
     },
-
     device: {
-      type: String,
-      trim: true,
-      maxlength: [200, "Device string too long"],
+      type: DataTypes.STRING(200),
+      allowNull: true,
     },
-
     ipAddress: {
-      type: String,
-      trim: true,
+      type: DataTypes.STRING(45),
+      allowNull: true,
     },
-
     userAgent: {
-      type: String,
-      trim: true,
-      maxlength: [500, "User-agent string too long"],
+      type: DataTypes.STRING(500),
+      allowNull: true,
     },
-
     expiresAt: {
-      type: Date,
-      required: [true, "Expiry date is required"],
+      type: DataTypes.DATE,
+      allowNull: false,
     },
-
     isRevoked: {
-      type: Boolean,
-      default: false,
+      type: DataTypes.BOOLEAN,
+      defaultValue: false,
     },
   },
   {
     timestamps: true,
-    toJSON: {
-      transform(_doc, ret) {
-        ret.id = ret._id;
-        delete ret._id;
-        delete ret.__v;
-        delete ret.token; // raw JWT never in API responses
-        return ret;
+    defaultScope: {
+      attributes: { exclude: ["token"] },
+    },
+    scopes: {
+      withToken: {
+        attributes: {},
       },
     },
+    indexes: [
+      {
+        fields: ["userId", "isRevoked"],
+      },
+    ],
   }
 );
 
-// ── Indexes ───────────────────────────────────────────────────────────────────
-refreshTokenSchema.index({ token: 1 }, { sparse: true });
-refreshTokenSchema.index({ user: 1, isRevoked: 1 });
-refreshTokenSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
+// Associations
+RefreshToken.belongsTo(User, { foreignKey: "userId", as: "userAssociation" });
+User.hasMany(RefreshToken, { foreignKey: "userId", as: "refreshTokens" });
+
+// Alias properties for MongoDB controller compatibility
+RefreshToken.prototype.toJSON = function () {
+  const values = { ...this.get() };
+  values.id = values.id;
+  values._id = values.id;
+  values.user = values.userId; // alias user for controller compatibility
+  delete values.token;
+  return values;
+};
 
 // ── Static methods ────────────────────────────────────────────────────────────
-refreshTokenSchema.statics.findValid = function (rawToken) {
-  return this.findOne({
-    token: rawToken,
-    isRevoked: false,
-    expiresAt: { $gt: new Date() },
-  }).select("+token");
-};
-
-refreshTokenSchema.statics.revokeAllForUser = function (userId) {
-  return this.updateMany(
-    { user: userId, isRevoked: false },
-    { $set: { isRevoked: true } }
-  );
-};
-
-refreshTokenSchema.statics.countActiveSessions = function (userId) {
-  return this.countDocuments({
-    user: userId,
-    isRevoked: false,
-    expiresAt: { $gt: new Date() },
+RefreshToken.findValid = function (rawToken) {
+  return this.scope("withToken").findOne({
+    where: {
+      token: rawToken,
+      isRevoked: false,
+      expiresAt: { [Op.gt]: new Date() },
+    },
+    include: [{ model: User, as: "userAssociation" }],
   });
 };
 
-export default mongoose.model("RefreshToken", refreshTokenSchema);
+RefreshToken.revokeAllForUser = function (userId) {
+  return this.update(
+    { isRevoked: true },
+    {
+      where: {
+        userId,
+        isRevoked: false,
+      },
+    }
+  );
+};
+
+RefreshToken.countActiveSessions = function (userId) {
+  return this.count({
+    where: {
+      userId,
+      isRevoked: false,
+      expiresAt: { [Op.gt]: new Date() },
+    },
+  });
+};
+
+export default RefreshToken;

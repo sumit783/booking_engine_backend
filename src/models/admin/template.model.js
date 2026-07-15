@@ -1,31 +1,47 @@
-import mongoose from "mongoose";
+import { DataTypes } from "sequelize";
+import { sequelize } from "../../config/db.js";
 
-const templateSchema = new mongoose.Schema(
+const Template = sequelize.define(
+  "Template",
   {
+    id: {
+      type: DataTypes.INTEGER,
+      primaryKey: true,
+      autoIncrement: true,
+    },
     name: {
-      type: String,
-      required: true,
+      type: DataTypes.STRING(255),
+      allowNull: false,
       unique: true,
-      trim: true,
+      validate: {
+        notEmpty: true,
+      },
     },
     description: {
-      type: String,
-      trim: true,
-      default: "",
+      type: DataTypes.TEXT,
+      allowNull: true,
+      defaultValue: "",
     },
     previewImage: {
-      type: String,
-      trim: true,
-      default: "",
+      type: DataTypes.STRING(500),
+      allowNull: true,
+      defaultValue: "",
     },
     isActive: {
-      type: Boolean,
-      default: true,
+      type: DataTypes.BOOLEAN,
+      defaultValue: true,
     },
   },
-  { timestamps: true }
+  {
+    timestamps: true,
+  }
 );
 
-const Template = mongoose.model("Template", templateSchema);
+// Alias properties for MongoDB controller compatibility
+Template.prototype.toJSON = function () {
+  const values = { ...this.get() };
+  values._id = values.id;
+  return values;
+};
 
 export default Template;

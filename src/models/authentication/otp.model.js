@@ -1,94 +1,101 @@
-import mongoose from "mongoose";
+import { DataTypes, Op } from "sequelize";
+import { sequelize } from "../../config/db.js";
 
-const { Schema } = mongoose;
-
-/** Maximum allowed verification attempts before an OTP is permanently locked. */
 export const OTP_MAX_ATTEMPTS = 3;
-
-/** OTP validity window in milliseconds (5 minutes). */
 export const OTP_TTL_MS = 5 * 60 * 1000;
-
-/** Staff invite OTP validity window (24 hours). */
 export const OTP_INVITE_TTL_MS = 24 * 60 * 60 * 1000;
 
-const otpSchema = new Schema(
+const OTP = sequelize.define(
+  "OTP",
   {
+    id: {
+      type: DataTypes.INTEGER,
+      primaryKey: true,
+      autoIncrement: true,
+    },
     email: {
-      type: String,
-      required: [true, "Email is required"],
-      lowercase: true,
-      trim: true,
-      index: true,
-    },
-
-    otp: {
-      type: String,
-      required: [true, "OTP hash is required"],
-      select: false, // never expose the hash in query results
-    },
-
-    purpose: {
-      type: String,
-      enum: {
-        values: ["login", "signup", "email_verification"],
-        message: "{VALUE} is not a valid OTP purpose",
+      type: DataTypes.STRING(255),
+      allowNull: false,
+      validate: {
+        isEmail: true,
+        notEmpty: true,
       },
-      required: [true, "Purpose is required"],
-      default: "login",
     },
-
+    otp: {
+      type: DataTypes.STRING(255),
+      allowNull: false,
+    },
+    purpose: {
+      type: DataTypes.ENUM("login", "signup", "email_verification"),
+      allowNull: false,
+      defaultValue: "login",
+    },
     expiresAt: {
-      type: Date,
-      required: [true, "Expiry date is required"],
+      type: DataTypes.DATE,
+      allowNull: false,
     },
-
     attempts: {
-      type: Number,
-      default: 0,
-      min: [0, "Attempts cannot be negative"],
-      max: [OTP_MAX_ATTEMPTS, `Attempts cannot exceed ${OTP_MAX_ATTEMPTS}`],
+      type: DataTypes.INTEGER,
+      defaultValue: 0,
+      validate: {
+        min: 0,
+      },
     },
-
     isUsed: {
-      type: Boolean,
-      default: false,
+      type: DataTypes.BOOLEAN,
+      defaultValue: false,
     },
   },
   {
     timestamps: true,
-    toJSON: {
-      transform(_doc, ret) {
-        ret.id = ret._id;
-        delete ret._id;
-        delete ret.__v;
-        delete ret.otp; // never leak the hash
-        return ret;
+    defaultScope: {
+      attributes: { exclude: ["otp"] },
+    },
+    scopes: {
+      withOtp: {
+        attributes: {},
       },
     },
+    indexes: [
+      {
+        fields: ["email", "purpose", "isUsed", "expiresAt"],
+      },
+    ],
   }
 );
 
-// ── Indexes ───────────────────────────────────────────────────────────────────
-otpSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
-otpSchema.index({ email: 1, purpose: 1, isUsed: 1, expiresAt: 1 });
-
-// ── Static methods ────────────────────────────────────────────────────────────
-otpSchema.statics.findLatestValid = function (email, purpose = "login") {
-  return this.findOne({
-    email,
-    purpose,
-    isUsed: false,
-    expiresAt: { $gt: new Date() },
-  })
-    .select("+otp")
-    .sort({ createdAt: -1 });
+// Alias _id for MongoDB compatibility in JSON
+OTP.prototype.toJSON = function () {
+  const values = { ...this.get() };
+  values._id = values.id;
+  delete values.otp;
+  return values;
 };
 
-otpSchema.statics.invalidateAll = function (email) {
-  return this.updateMany(
-    { email, isUsed: false, expiresAt: { $gt: new Date() } },
-    { $set: { isUsed: true } }
+// ── Static methods ────────────────────────────────────────────────────────────
+OTP.findLatestValid = function (email, purpose = "login") {
+  return this.scope("withOtp").findOne({
+    where: {
+      email,
+      purpose,
+      isUsed: false,
+      expiresAt: { [Op.gt]: new Date() },
+    },
+    order: [["createdAt", "DESC"]],
+  });
+};
+
+OTP.invalidateAll = function (email) {
+  return this.update(
+    { isUsed: true },
+    {
+      where: {
+        email,
+        isUsed: false,
+        expiresAt: { [Op.gt]: new Date() },
+      },
+    }
   );
 };
 
-export default mongoose.model("OTP", otpSchema);
+export default OTP;

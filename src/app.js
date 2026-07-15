@@ -9,7 +9,21 @@ import propertyRouter from "./routes/property/property.routes.js";
 import adminPropertyRouter from "./routes/property/admin.property.routes.js";
 
 import adminTemplateRouter from "./routes/admin/admin.template.routes.js";
+import adminCommissionRouter from "./routes/admin/admin.commission.routes.js";
+import adminWithdrawalsRouter from "./routes/admin/admin.withdrawals.routes.js";
+import adminOwnerRouter from "./routes/admin/admin.owner.routes.js";
+import adminBookingRouter from "./routes/admin/admin.booking.routes.js";
+import adminPaymentRouter from "./routes/admin/admin.payment.routes.js";
+import adminReportRouter from "./routes/admin/admin.report.routes.js";
+import adminDashboardRouter from "./routes/admin/admin.dashboard.routes.js";
+import staffRouter from "./routes/staff/staff.routes.js";
 import websiteRouter from "./routes/website/website.routes.js";
+import packageRouter from "./routes/property/package.routes.js";
+import extraPackageRouter from "./routes/property/extra-package.routes.js";
+import availabilityRouter from "./routes/property/availability.routes.js";
+import pricingRouter from "./routes/property/pricing.routes.js";
+import whatsappRouter from "./routes/whatsapp/whatsapp.routes.js";
+import webhookRouter from "./routes/webhook/webhook.routes.js";
 import ApiError from "./utils/apiError.js";
 import connectDB from "./config/db.js";
 
@@ -55,11 +69,25 @@ app.use(async (req, res, next) => {
 app.use("/api/v1/auth/user", userAuthRouter);   // OTP login / refresh / logout
 app.use("/api/v1/auth/admin", adminAuthRouter); // Supabase admin auth
 app.use("/api/v1/users", userRouter);           // Owner signup, staff management
-app.use("/api/v1/properties", propertyRouter);  // Property CRUD + uploads
+app.use("/api/v1/properties", propertyRouter);      // Property CRUD + uploads
+app.use("/api/v1/properties", packageRouter);       // Package management + images
+app.use("/api/v1/properties", extraPackageRouter);  // Extra packages (Breakfast, etc)
+app.use("/api/v1/properties", availabilityRouter);  // Room availability blocks
+app.use("/api/v1/properties", pricingRouter);       // Pricing rules
 
 app.use("/api/v1/admin/properties", adminPropertyRouter); // Admin property verification
 app.use("/api/v1/admin/templates", adminTemplateRouter);  // Admin templates
+app.use("/api/v1/admin/commissions", adminCommissionRouter); // Admin commissions
+app.use("/api/v1/admin/withdrawals", adminWithdrawalsRouter); // Admin withdrawal requests
+app.use("/api/v1/admin/owners", adminOwnerRouter); // Admin owners management
+app.use("/api/v1/admin/bookings", adminBookingRouter); // Admin bookings management
+app.use("/api/v1/admin/payments", adminPaymentRouter); // Admin payments management
+app.use("/api/v1/admin/reports", adminReportRouter); // Admin reports management
+app.use("/api/v1/admin/dashboard", adminDashboardRouter); // Admin dashboard summary
+app.use("/api/v1/staff", staffRouter);                    // Staff portal API
 app.use("/api/v1/website", websiteRouter);                // Public website builder API
+app.use("/api/v1/whatsapp", whatsappRouter);              // WhatsApp integration API
+app.use("/api/v1/webhooks", webhookRouter);               // Webhooks (e.g. Razorpay)
 
 // ── 404 handler ───────────────────────────────────────────────────────────────
 app.use((_req, res) => {
