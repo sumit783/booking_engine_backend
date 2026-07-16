@@ -38,22 +38,37 @@ async function checkAvailabilityAndPrice(propertySlug, checkIn, checkOut, roomId
   let totalAmount = 0;
   let room = null;
   let pkg = null;
+  let assignedRoomNumbers = null;
 
   // 1. Room Availability & Price
   if (roomId) {
     room = property.rooms[0];
     if (!room) throw new Error("Room not found");
     
-    // Calculate overlapping bookings
-    const overlappingBookings = await prisma.booking.count({
+    // Calculate overlapping bookings and fetch their assigned room numbers
+    const overlappingBookings = await prisma.booking.findMany({
       where: {
         roomId: room.id,
         status: { in: ["PENDING", "CONFIRMED"] },
         OR: [
           { checkInDate: { lt: checkOutDate }, checkOutDate: { gt: checkInDate } }
         ]
+      },
+      select: { assignedRoomNumbers: true }
+    });
+    const overlappingCount = overlappingBookings.length;
+
+    let occupiedRoomNumbers = new Set();
+    overlappingBookings.forEach(b => {
+      if (b.assignedRoomNumbers && Array.isArray(b.assignedRoomNumbers)) {
+        b.assignedRoomNumbers.forEach(rn => occupiedRoomNumbers.add(rn));
       }
     });
+
+    let availableRoomNumbers = [];
+    if (room.roomNumbers && Array.isArray(room.roomNumbers)) {
+      availableRoomNumbers = room.roomNumbers.filter(rn => !occupiedRoomNumbers.has(rn));
+    }
 
     // Calculate overlapping blocks
     const overlappingBlocks = await prisma.roomBlock.count({
@@ -65,9 +80,14 @@ async function checkAvailabilityAndPrice(propertySlug, checkIn, checkOut, roomId
       }
     });
 
-    const unavailableUnits = overlappingBookings + overlappingBlocks;
+    const unavailableUnits = overlappingCount + overlappingBlocks;
     if (unavailableUnits + (roomCount - 1) >= room.quantity) {
       throw new Error(`Not enough rooms available for these dates (Available: ${Math.max(0, room.quantity - unavailableUnits)})`);
+    }
+
+    // Assign room numbers using round robin (pick the first available N rooms)
+    if (availableRoomNumbers.length > 0) {
+      assignedRoomNumbers = availableRoomNumbers.slice(0, roomCount);
     }
 
     // Basic price calculation: basePrice * nights
@@ -106,7 +126,7 @@ async function checkAvailabilityAndPrice(propertySlug, checkIn, checkOut, roomId
 
   totalAmount += extraPackagesTotal;
 
-  return { property, room, pkg, totalAmount, nights, extraPackagesSnapshot, extraPackagesTotal };
+  return { property, room, pkg, totalAmount, nights, extraPackagesSnapshot, extraPackagesTotal, assignedRoomNumbers };
 }
 
 export const calculatePrice = async (req, res) => {
@@ -163,7 +183,7 @@ export const createBooking = async (req, res) => {
       return res.status(400).json({ success: false, message: "Guest name and phone are required" });
     }
 
-    const { property, room, pkg, totalAmount, extraPackagesSnapshot, extraPackagesTotal } = await checkAvailabilityAndPrice(
+    let { property, room, pkg, totalAmount, extraPackagesSnapshot, extraPackagesTotal, assignedRoomNumbers } = await checkAvailabilityAndPrice(
       slug, checkIn, checkOut, roomId, packageId, guests, roomCount, extraPackages
     );
 
@@ -231,6 +251,7 @@ export const createBooking = async (req, res) => {
         totalAmount: finalAmountForBooking, // store final (base + commission + extras)
         extraPackages: extraPackagesSnapshot,
         extraPackagesTotal,
+        assignedRoomNumbers: assignedRoomNumbers,
         commissionRate: appliedRateForBooking,
         commissionAmount: commissionAmountForBooking,
         status: "PENDING",

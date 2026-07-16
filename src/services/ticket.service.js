@@ -12,13 +12,15 @@ const prisma = new PrismaClient();
 export const generateTicketPDF = async (booking) => {
   const qrBuffer = await qrcode.toBuffer(booking.ticketId || booking.bookingRef, {
     margin: 1,
-    width: 120,
+    width: 140,
+    color: { dark: "#0f172a", light: "#ffffff" }
   });
 
   return new Promise((resolve, reject) => {
     const doc = new PDFDocument({ 
       size: "A4", 
-      margins: { top: 40, left: 50, right: 50, bottom: 40 }
+      margins: { top: 0, left: 0, right: 0, bottom: 0 },
+      bufferPages: true
     });
     
     const chunks = [];
@@ -27,104 +29,103 @@ export const generateTicketPDF = async (booking) => {
     doc.on("error", (err) => reject(err));
 
     // Color Palette
-    const primaryColor = "#0f172a"; // Slate 900
-    const secondaryColor = "#475569"; // Slate 600
-    const lightBg = "#f8fafc"; // Slate 50
-    const borderColor = "#e2e8f0"; // Slate 200
-
-    // Header / Title
-    doc.fillColor(primaryColor)
-       .fontSize(22)
-       .font("Helvetica-Bold")
-       .text(booking.property.propertyName.toUpperCase(), { align: "left" });
+    const primaryBrand = "#0f172a"; // Slate 900
+    const primaryLight = "#1e293b"; // Slate 800
+    const accent = "#38bdf8"; // Sky 400
+    const textDark = "#1e293b"; 
+    const textMuted = "#64748b"; // Slate 500
+    const bgLight = "#f8fafc"; // Slate 50
+    const border = "#e2e8f0"; // Slate 200
     
-    doc.fontSize(10)
-       .font("Helvetica")
-       .fillColor(secondaryColor)
-       .text("Booking Confirmation Ticket", { align: "left" });
+    // Status Colors
+    const successBg = "#dcfce7";
+    const successText = "#166534";
+    const pendingBg = "#fef9c3";
+    const pendingText = "#854d0e";
 
-    // Decorative line
-    doc.moveTo(50, 90).lineTo(545, 90).strokeColor(borderColor).lineWidth(1).stroke();
-
-    // QR Code Positioned on Right Side
-    doc.image(qrBuffer, 425, 110, { width: 120 });
-
-    // Booking Details Section
-    doc.fillColor(primaryColor)
+    // 1. Header Banner
+    doc.rect(0, 0, 595, 120).fill(primaryBrand);
+    
+    doc.fillColor("#ffffff")
+       .fontSize(28)
+       .font("Helvetica-Bold")
+       .text(booking.property.propertyName.toUpperCase(), 50, 40, { align: "left" });
+    
+    doc.fillColor(accent)
        .fontSize(12)
        .font("Helvetica-Bold")
-       .text("RESERVATION DETAILS", 50, 110);
+       .text("BOOKING CONFIRMATION TICKET", 50, 75, { align: "left", letterSpacing: 2 });
 
-    doc.fontSize(10)
-       .font("Helvetica")
-       .fillColor(secondaryColor)
-       .text(`Reference ID:`, 50, 135)
-       .font("Helvetica-Bold")
-       .fillColor(primaryColor)
-       .text(booking.bookingRef, 140, 135);
+    // 2. Main Content Area (Background)
+    doc.rect(0, 120, 595, 722).fill("#ffffff");
 
-    doc.font("Helvetica")
-       .fillColor(secondaryColor)
-       .text(`Status:`, 50, 155)
-       .font("Helvetica-Bold")
-       .fillColor("#059669") // Emerald 600
-       .text(booking.status, 140, 155);
-
-    doc.font("Helvetica")
-       .fillColor(secondaryColor)
-       .text(`Payment:`, 50, 175)
-       .font("Helvetica-Bold")
-       .fillColor("#059669")
-       .text(booking.paymentStatus, 140, 175);
-
-    // Guest Info Section
-    doc.fillColor(primaryColor)
-       .fontSize(12)
-       .font("Helvetica-Bold")
-       .text("GUEST DETAILS", 50, 215);
-
-    doc.fontSize(10)
-       .font("Helvetica")
-       .fillColor(secondaryColor)
-       .text(`Name:`, 50, 240)
-       .font("Helvetica-Bold")
-       .fillColor(primaryColor)
-       .text(booking.guestName, 140, 240);
-
-    doc.font("Helvetica")
-       .fillColor(secondaryColor)
-       .text(`Phone:`, 50, 260)
-       .font("Helvetica-Bold")
-       .fillColor(primaryColor)
-       .text(booking.guestPhone, 140, 260);
-
-    if (booking.guestEmail) {
-      doc.font("Helvetica")
-         .fillColor(secondaryColor)
-         .text(`Email:`, 50, 280)
+    // Helper: Draw a Badge
+    const drawBadge = (x, y, text, statusStr) => {
+      const isSuccess = statusStr === "CONFIRMED" || statusStr === "PAID";
+      const bgColor = isSuccess ? successBg : pendingBg;
+      const textColor = isSuccess ? successText : pendingText;
+      
+      doc.rect(x, y, 90, 24).fill(bgColor);
+      doc.fillColor(textColor)
+         .fontSize(9)
          .font("Helvetica-Bold")
-         .fillColor(primaryColor)
-         .text(booking.guestEmail, 140, 280);
-    }
+         .text(text.toUpperCase(), x, y + 7, { width: 90, align: "center" });
+    };
 
-    // Accommodation Info Table
-    doc.fillColor(primaryColor)
-       .fontSize(12)
-       .font("Helvetica-Bold")
-       .text("STAY DETAILS", 50, 320);
+    // 3. Two-Column Layout
+    // LEFT COLUMN: Guest & Reservation Info
+    doc.roundedRect(50, 150, 320, 220, 8).lineWidth(1).stroke(border);
+    doc.rect(50, 150, 320, 40).fill(bgLight);
+    doc.fillColor(textDark).fontSize(12).font("Helvetica-Bold").text("RESERVATION SUMMARY", 70, 164);
+    
+    // Border for the header of the card
+    doc.moveTo(50, 190).lineTo(370, 190).stroke(border);
 
-    // Table Header Box
-    doc.rect(50, 340, 495, 24).fill(lightBg);
-    doc.fillColor(primaryColor)
+    // Reservation Details inside left card
+    let yPos = 210;
+    const drawRow = (label, value) => {
+      doc.fillColor(textMuted).fontSize(10).font("Helvetica").text(label, 70, yPos);
+      doc.fillColor(textDark).fontSize(10).font("Helvetica-Bold").text(value, 160, yPos);
+      yPos += 22;
+    };
+
+    drawRow("Reference ID:", booking.bookingRef);
+    drawRow("Guest Name:", booking.guestName);
+    drawRow("Phone:", booking.guestPhone);
+    if (booking.guestEmail) drawRow("Email:", booking.guestEmail);
+    
+    // Status Badges inside left card
+    yPos += 5;
+    doc.fillColor(textMuted).fontSize(10).font("Helvetica").text("Status:", 70, yPos + 6);
+    drawBadge(160, yPos, booking.status, booking.status);
+    
+    yPos += 35;
+    doc.fillColor(textMuted).fontSize(10).font("Helvetica").text("Payment:", 70, yPos + 6);
+    drawBadge(160, yPos, booking.paymentStatus, booking.paymentStatus);
+
+    // RIGHT COLUMN: QR Code Card
+    doc.roundedRect(390, 150, 155, 220, 8).lineWidth(1).stroke(border);
+    doc.image(qrBuffer, 397, 165, { width: 140 });
+    
+    doc.fillColor(textMuted)
        .fontSize(9)
        .font("Helvetica-Bold")
-       .text("Description", 60, 348)
-       .text("Check-In", 200, 348)
-       .text("Check-Out", 320, 348)
-       .text("Guests", 440, 348)
-       .text("Total Paid", 500, 348);
+       .text("SCAN AT CHECK-IN", 390, 335, { width: 155, align: "center", letterSpacing: 1 });
 
-    // Table Body
+    // 4. Stay Details Table
+    doc.roundedRect(50, 400, 495, 180, 8).lineWidth(1).stroke(border);
+    
+    // Table Header
+    doc.rect(50, 400, 495, 35).fill(primaryLight);
+    doc.fillColor("#ffffff")
+       .fontSize(10)
+       .font("Helvetica-Bold")
+       .text("Accommodation", 70, 412)
+       .text("Check-In", 240, 412)
+       .text("Check-Out", 340, 412)
+       .text("Guests", 440, 412);
+
+    // Table Content
     const checkIn = new Date(booking.checkInDate).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
     const checkOut = new Date(booking.checkOutDate).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
     
@@ -137,24 +138,45 @@ export const generateTicketPDF = async (booking) => {
       description = booking.package.name;
     }
 
-    doc.fillColor(secondaryColor)
-       .font("Helvetica")
-       .text(description, 60, 375, { width: 130 })
-       .text(checkIn, 200, 375)
-       .text(checkOut, 320, 375)
-       .text(String(booking.guests), 440, 375)
+    doc.fillColor(textDark)
+       .fontSize(10)
        .font("Helvetica-Bold")
-       .fillColor(primaryColor)
-       .text(`INR ${Number(booking.totalAmount).toLocaleString("en-IN")}`, 490, 375);
+       .text(description, 70, 455, { width: 150 })
+       .font("Helvetica")
+       .text(checkIn, 240, 455)
+       .text(checkOut, 340, 455)
+       .text(String(booking.guests), 440, 455);
+       
+    let roomNumberText = "";
+    if (booking.assignedRoomNumbers && Array.isArray(booking.assignedRoomNumbers) && booking.assignedRoomNumbers.length > 0) {
+      roomNumberText = `Room No(s): ${booking.assignedRoomNumbers.join(", ")}`;
+      doc.fillColor(accent).font("Helvetica-Bold").text(roomNumberText, 70, 485, { width: 150 });
+    }
 
-    // Footer note
-    doc.moveTo(50, 430).lineTo(545, 430).strokeColor(borderColor).lineWidth(1).stroke();
+    // Divider Line above Total
+    doc.moveTo(50, 530).lineTo(545, 530).stroke(border);
     
-    doc.fillColor(secondaryColor)
-       .fontSize(8)
+    // Total Section
+    doc.rect(50, 530, 495, 50).fill(bgLight);
+    doc.fillColor(textDark)
+       .fontSize(14)
+       .font("Helvetica-Bold")
+       .text("TOTAL PAID", 70, 548);
+       
+    doc.fillColor(primaryBrand)
+       .fontSize(16)
+       .font("Helvetica-Bold")
+       .text(`INR ${Number(booking.totalAmount).toLocaleString("en-IN")}`, 340, 546, { width: 185, align: "right" });
+
+    // 5. Footer Footer Note
+    doc.fillColor(textMuted)
+       .fontSize(9)
        .font("Helvetica-Oblique")
-       .text("Please present this ticket at the reception desk during check-in.", 50, 450, { align: "center" })
-       .text("Thank you for your booking! Have a pleasant stay.", 50, 465, { align: "center" });
+       .text("Please present this ticket at the reception desk during check-in.", 50, 650, { align: "center", width: 495 })
+       .text("Thank you for choosing us! Have a pleasant stay.", 50, 665, { align: "center", width: 495 });
+       
+    doc.moveTo(50, 690).lineTo(545, 690).stroke(border);
+    doc.font("Helvetica").fontSize(8).text(`Generated on ${new Date().toLocaleString("en-IN")} • ${booking.bookingRef}`, 50, 700, { align: "center", width: 495 });
 
     doc.end();
   });
@@ -293,7 +315,12 @@ export const sendTicketWhatsApp = async (bookingId) => {
 
     const downloadUrl = `http://localhost:5000/api/v1/website/${booking.property.propertySlug}/bookings/${booking.bookingRef}/ticket`;
 
-    const text = `Hello *${booking.guestName}*,\n\nYour booking at *${booking.property.propertyName}* is confirmed! 🎉\n\n*Reference ID:* ${booking.bookingRef}\n*Accommodation:* ${description}\n*Check-in:* ${checkIn}\n*Check-out:* ${checkOut}\n*Total Paid:* INR ${Number(booking.totalAmount).toLocaleString("en-IN")}\n\nYou can download your PDF ticket here:\n${downloadUrl}\n\nThank you for choosing us!`;
+    let roomNumberText = "";
+    if (booking.assignedRoomNumbers && Array.isArray(booking.assignedRoomNumbers) && booking.assignedRoomNumbers.length > 0) {
+      roomNumberText = `\n*Room No(s):* ${booking.assignedRoomNumbers.join(", ")}`;
+    }
+
+    const text = `Hello *${booking.guestName}*,\n\nYour booking at *${booking.property.propertyName}* is confirmed! 🎉\n\n*Reference ID:* ${booking.bookingRef}\n*Accommodation:* ${description}${roomNumberText}\n*Check-in:* ${checkIn}\n*Check-out:* ${checkOut}\n*Total Paid:* INR ${Number(booking.totalAmount).toLocaleString("en-IN")}\n\nYou can download your PDF ticket here:\n${downloadUrl}\n\nThank you for choosing us!`;
 
     // Generate QR Code image buffer to send to WhatsApp using ticketId
     const qrBuffer = await qrcode.toBuffer(booking.ticketId || booking.bookingRef, {

@@ -24,7 +24,7 @@ const formatRoom = (room, req) => {
 // POST /api/v1/properties/:id/rooms
 export const createRoom = asyncHandler(async (req, res) => {
   const propertyId = Number(req.params.id);
-  const { name, description, capacity, quantity, basePrice } = req.body;
+  const { name, description, capacity, quantity, basePrice, childrenCount, bedsCount } = req.body;
 
   // 1. Verify property ownership
   const property = await prisma.property.findFirst({
@@ -57,6 +57,19 @@ export const createRoom = asyncHandler(async (req, res) => {
     }
   }
 
+  // 3b. Parse room numbers
+  let parsedRoomNumbers = [];
+  const rawRoomNumbers = req.body["roomNumbers[]"] || req.body.roomNumbers;
+  if (rawRoomNumbers) {
+    if (Array.isArray(rawRoomNumbers)) {
+      parsedRoomNumbers = rawRoomNumbers;
+    } else if (typeof rawRoomNumbers === "string") {
+      parsedRoomNumbers = rawRoomNumbers.split(",").map(rn => rn.trim()).filter(rn => rn);
+    } else {
+      parsedRoomNumbers = [rawRoomNumbers];
+    }
+  }
+
   // 4. Create room
   const room = await prisma.room.create({
     data: {
@@ -66,7 +79,10 @@ export const createRoom = asyncHandler(async (req, res) => {
       capacity: Number(capacity),
       quantity: Number(quantity),
       basePrice: Number(basePrice),
+      childrenCount: childrenCount ? Number(childrenCount) : 0,
+      bedsCount: bedsCount ? Number(bedsCount) : 1,
       amenities: parsedAmenities,
+      roomNumbers: parsedRoomNumbers,
     },
   });
 
@@ -148,7 +164,7 @@ export const getRoomImage = asyncHandler(async (req, res) => {
 export const updateRoom = asyncHandler(async (req, res) => {
   const propertyId = Number(req.params.id);
   const roomId = Number(req.params.roomId);
-  const { name, description, capacity, quantity, basePrice } = req.body;
+  const { name, description, capacity, quantity, basePrice, childrenCount, bedsCount } = req.body;
 
   // 1. Verify property ownership
   const property = await prisma.property.findFirst({
@@ -188,6 +204,19 @@ export const updateRoom = asyncHandler(async (req, res) => {
     }
   }
 
+  // 3b. Parse room numbers if updated
+  let parsedRoomNumbers = undefined;
+  const rawRoomNumbers = req.body["roomNumbers[]"] || req.body.roomNumbers;
+  if (rawRoomNumbers !== undefined) {
+    if (Array.isArray(rawRoomNumbers)) {
+      parsedRoomNumbers = rawRoomNumbers;
+    } else if (typeof rawRoomNumbers === "string") {
+      parsedRoomNumbers = rawRoomNumbers.split(",").map(rn => rn.trim()).filter(rn => rn);
+    } else {
+      parsedRoomNumbers = [rawRoomNumbers];
+    }
+  }
+
   // 4. Update room
   await prisma.room.update({
     where: { id: roomId },
@@ -197,7 +226,10 @@ export const updateRoom = asyncHandler(async (req, res) => {
       capacity: capacity !== undefined ? Number(capacity) : undefined,
       quantity: quantity !== undefined ? Number(quantity) : undefined,
       basePrice: basePrice !== undefined ? Number(basePrice) : undefined,
+      childrenCount: childrenCount !== undefined ? Number(childrenCount) : undefined,
+      bedsCount: bedsCount !== undefined ? Number(bedsCount) : undefined,
       amenities: parsedAmenities !== undefined ? parsedAmenities : undefined,
+      roomNumbers: parsedRoomNumbers !== undefined ? parsedRoomNumbers : undefined,
     },
   });
 

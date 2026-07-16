@@ -100,6 +100,7 @@ export const getRoomAvailability = asyncHandler(async (req, res) => {
       id: true,
       name: true,
       quantity: true,
+      roomNumbers: true,
       blocks: {
         where: {
           startDate: { lte: rangeEnd },
@@ -111,6 +112,22 @@ export const getRoomAvailability = asyncHandler(async (req, res) => {
           endDate: true,
           status: true,
           reason: true,
+        },
+      },
+      bookings: {
+        where: {
+          status: { in: ["PENDING", "CONFIRMED"] },
+          checkInDate: { lte: rangeEnd },
+          checkOutDate: { gte: rangeStart },
+        },
+        select: {
+          id: true,
+          bookingRef: true,
+          guestName: true,
+          checkInDate: true,
+          checkOutDate: true,
+          status: true,
+          assignedRoomNumbers: true,
         },
       },
     },

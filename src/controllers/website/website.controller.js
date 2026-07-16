@@ -113,6 +113,7 @@ export const getAllPublicProperties = asyncHandler(async (req, res) => {
 // Public route: list rooms for a property by slug
 export const getPublicRooms = asyncHandler(async (req, res) => {
   const { slug } = req.params;
+  const { checkIn, checkOut, guests, type, children, beds, minPrice, maxPrice, amenities } = req.query;
 
   const property = await prisma.property.findFirst({
     where: { propertySlug: slug },
@@ -120,19 +121,73 @@ export const getPublicRooms = asyncHandler(async (req, res) => {
   });
   if (!property) throw new ApiError(404, "Property not found");
 
-  const rooms = await prisma.room.findMany({
-    where: { propertyId: property.id },
-    include: { images: { select: { id: true, mimeType: true } } },
+  let whereClause = { propertyId: property.id };
+  if (guests) {
+    whereClause.capacity = { gte: parseInt(guests, 10) };
+  }
+  if (children) {
+    whereClause.childrenCount = { gte: parseInt(children, 10) };
+  }
+  if (beds) {
+    whereClause.bedsCount = { gte: parseInt(beds, 10) };
+  }
+  if (type) {
+    whereClause.name = { contains: type };
+  }
+  if (minPrice || maxPrice) {
+    whereClause.basePrice = {};
+    if (minPrice) whereClause.basePrice.gte = parseFloat(minPrice);
+    if (maxPrice) whereClause.basePrice.lte = parseFloat(maxPrice);
+  }
+
+  const allRooms = await prisma.room.findMany({
+    where: whereClause,
+    include: { 
+      images: { select: { id: true, mimeType: true } },
+      bookings: true,
+      blocks: true 
+    },
     orderBy: { createdAt: "asc" },
   });
 
+  // Filter availability and amenities
+  let availableRooms = allRooms;
+  if (checkIn && checkOut) {
+    const checkInDate = new Date(checkIn);
+    const checkOutDate = new Date(checkOut);
+    
+    availableRooms = allRooms.filter(room => {
+      const bookedCount = room.bookings.filter(b => {
+        return (new Date(b.checkInDate) < checkOutDate && new Date(b.checkOutDate) > checkInDate);
+      }).length;
+      
+      const blockedCount = room.blocks.filter(b => {
+        return (new Date(b.startDate) < checkOutDate && new Date(b.endDate) > checkInDate);
+      }).length;
+      
+      const totalUnavailable = bookedCount + blockedCount;
+      return totalUnavailable < room.quantity;
+    });
+  }
+
+  if (amenities) {
+    const amenitiesList = Array.isArray(amenities) ? amenities : amenities.split(",").map(a => a.trim().toLowerCase());
+    availableRooms = availableRooms.filter(room => {
+      if (!room.amenities) return false;
+      const roomAmenities = Array.isArray(room.amenities) ? room.amenities.map(a => typeof a === 'string' ? a.toLowerCase() : '') : [];
+      return amenitiesList.every(required => roomAmenities.includes(required));
+    });
+  }
+
   const baseUrl = `${req.protocol}://${req.get("host")}`;
 
-  const formatted = rooms.map((room) => ({
+  const formatted = availableRooms.map((room) => ({
     id: room.id,
     name: room.name,
     description: room.description,
     capacity: room.capacity,
+    childrenCount: room.childrenCount,
+    bedsCount: room.bedsCount,
     quantity: room.quantity,
     basePrice: Number(room.basePrice),
     amenities: room.amenities || [],
@@ -141,6 +196,19 @@ export const getPublicRooms = asyncHandler(async (req, res) => {
       url: `${baseUrl}/api/v1/properties/rooms/images/${img.id}`,
     })),
   }));
+
+  const allPropertyRooms = await prisma.room.findMany({
+    where: { propertyId: property.id },
+    select: { name: true, amenities: true }
+  });
+  const allRoomTypes = [...new Set(allPropertyRooms.map(r => r.name))];
+  const allAmenities = [...new Set(
+    allPropertyRooms.flatMap(r => {
+      if (!r.amenities) return [];
+      if (Array.isArray(r.amenities)) return r.amenities.map(a => typeof a === 'string' ? a.trim() : '');
+      return [];
+    }).filter(Boolean)
+  )];
 
   res.status(200).json(
     new ApiResponse(200, "Rooms fetched", {
@@ -153,6 +221,8 @@ export const getPublicRooms = asyncHandler(async (req, res) => {
         checkOutTime: property.checkOutTime,
       },
       rooms: formatted,
+      allRoomTypes,
+      allAmenities,
     })
   );
 });
@@ -161,6 +231,7 @@ export const getPublicRooms = asyncHandler(async (req, res) => {
 // Public route: list packages for a property by slug
 export const getPublicPackages = asyncHandler(async (req, res) => {
   const { slug } = req.params;
+  const { type, minPrice, maxPrice, amenities } = req.query;
 
   const property = await prisma.property.findFirst({
     where: { propertySlug: slug },
@@ -168,11 +239,30 @@ export const getPublicPackages = asyncHandler(async (req, res) => {
   });
   if (!property) throw new ApiError(404, "Property not found");
 
-  const packages = await prisma.package.findMany({
-    where: { propertyId: property.id, isDeleted: false },
+  let whereClause = { propertyId: property.id, isDeleted: false };
+  if (type) {
+    whereClause.name = { contains: type };
+  }
+  if (minPrice || maxPrice) {
+    whereClause.price = {};
+    if (minPrice) whereClause.price.gte = parseFloat(minPrice);
+    if (maxPrice) whereClause.price.lte = parseFloat(maxPrice);
+  }
+
+  let packages = await prisma.package.findMany({
+    where: whereClause,
     include: { images: { select: { id: true, mimeType: true } } },
     orderBy: { createdAt: "asc" },
   });
+
+  if (amenities) {
+    const amenitiesList = Array.isArray(amenities) ? amenities : amenities.split(",").map(a => a.trim().toLowerCase());
+    packages = packages.filter(pkg => {
+      if (!pkg.activities) return false;
+      const pkgActivities = Array.isArray(pkg.activities) ? pkg.activities.map(a => typeof a === 'string' ? a.toLowerCase() : '') : [];
+      return amenitiesList.every(required => pkgActivities.includes(required));
+    });
+  }
 
   const baseUrl = `${req.protocol}://${req.get("host")}`;
 
@@ -188,6 +278,18 @@ export const getPublicPackages = asyncHandler(async (req, res) => {
     })),
   }));
 
+  const allPropertyPackages = await prisma.package.findMany({
+    where: { propertyId: property.id, isDeleted: false },
+    select: { activities: true }
+  });
+  const allActivities = [...new Set(
+    allPropertyPackages.flatMap(p => {
+      if (!p.activities) return [];
+      if (Array.isArray(p.activities)) return p.activities.map(a => typeof a === 'string' ? a.trim() : '');
+      return [];
+    }).filter(Boolean)
+  )];
+
   res.status(200).json(
     new ApiResponse(200, "Packages fetched", {
       property: {
@@ -197,6 +299,7 @@ export const getPublicPackages = asyncHandler(async (req, res) => {
         website: property.website,
       },
       packages: formatted,
+      allActivities,
     })
   );
 });

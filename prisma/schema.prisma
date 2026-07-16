@@ -153,7 +153,10 @@ model Room {
   capacity    Int
   quantity    Int
   basePrice   Decimal  @db.Decimal(10, 2)
+  childrenCount Int    @default(0)
+  bedsCount   Int      @default(1)
   amenities     Json?         // Array of strings
+  roomNumbers   Json?         // Array of strings, e.g. ["101", "102"]
   images        RoomImage[]
   blocks        RoomBlock[]
   pricingRules  PricingRule[]
@@ -267,6 +270,7 @@ model Booking {
   checkOutDate DateTime @db.Date
   guests       Int
   roomCount    Int      @default(1)
+  assignedRoomNumbers Json? // Array of strings assigned by round robin
   
   extraPackages Json?   // Snapshot of selected extras [{ id, name, price, type, quantity, total }]
   extraPackagesTotal Decimal @default(0.00) @db.Decimal(10, 2)
