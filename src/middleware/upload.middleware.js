@@ -133,7 +133,10 @@ export const uploadPackageImages = multer({
  * @param {string} field  field name
  * @returns {string|undefined}
  */
-export const fileUrl = (files, field) => files?.[field]?.[0]?.path ?? undefined;
+export const fileUrl = (files, field) => {
+  const f = files?.[field]?.[0];
+  return f ? (f.path || f.secure_url || f.url) : undefined;
+};
 
 /**
  * Extract Cloudinary URLs for a multi-file field (e.g. gallery).
@@ -143,7 +146,7 @@ export const fileUrl = (files, field) => files?.[field]?.[0]?.path ?? undefined;
  */
 export const fileUrls = (files, field) => {
   const entries = files?.[field];
-  return entries?.length ? entries.map((f) => f.path) : undefined;
+  return entries?.length ? entries.map((f) => f.path || f.secure_url || f.url) : undefined;
 };
 
 /**

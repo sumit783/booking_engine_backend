@@ -339,10 +339,10 @@ export const updateMedia = asyncHandler(async (req, res) => {
 
   const data = {};
   if (logoFile) {
-    data.logo = logoFile.path;
+    data.logo = logoFile.path || logoFile.secure_url || logoFile.url;
   }
   if (coverImageFile) {
-    data.coverImage = coverImageFile.path;
+    data.coverImage = coverImageFile.path || coverImageFile.secure_url || coverImageFile.url;
   }
 
   if (Object.keys(data).length > 0) {
@@ -357,7 +357,7 @@ export const updateMedia = asyncHandler(async (req, res) => {
       await prisma.propertyGalleryImage.create({
           data: {
           propertyId: property.id,
-          url: file.path,
+          url: file.path || file.secure_url || file.url,
           title: "",
           description: "",
         },

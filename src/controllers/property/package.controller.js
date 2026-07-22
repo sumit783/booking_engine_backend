@@ -77,7 +77,7 @@ export const createPackage = asyncHandler(async (req, res) => {
       await prisma.packageImage.create({
         data: {
           packageId: pkg.id,
-          url: file.path,
+          url: file.path || file.secure_url || file.url,
         },
       });
     }
@@ -157,7 +157,7 @@ export const updatePackage = asyncHandler(async (req, res) => {
       await prisma.packageImage.create({
         data: {
           packageId: packageId,
-          url: file.path,
+          url: file.path || file.secure_url || file.url,
         },
       });
     }

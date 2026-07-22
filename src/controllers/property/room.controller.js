@@ -89,7 +89,7 @@ export const createRoom = asyncHandler(async (req, res) => {
       await prisma.roomImage.create({
         data: {
           roomId: room.id,
-          url: file.path,
+          url: file.path || file.secure_url || file.url,
         },
       });
     }
@@ -255,7 +255,7 @@ export const updateRoom = asyncHandler(async (req, res) => {
       await prisma.roomImage.create({
         data: {
           roomId: roomId,
-          url: file.path,
+          url: file.path || file.secure_url || file.url,
         },
       });
     }
