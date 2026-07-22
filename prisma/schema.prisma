@@ -92,10 +92,8 @@ model Property {
   checkInTime     String?   @db.VarChar(10)
   checkOutTime    String?   @db.VarChar(10)
   website         String?   @db.VarChar(255)
-  logo            Bytes?
-  logoMimeType    String?   @db.VarChar(100)
-  coverImage      Bytes?
-  coverImageMimeType String?  @db.VarChar(100)
+  logo            String?   @db.VarChar(500)
+  coverImage      String?   @db.VarChar(500)
   gallery         PropertyGalleryImage[]
   address         Json? // JSON object
   location        Json? // JSON object
@@ -133,8 +131,7 @@ model PropertyGalleryImage {
   id          Int      @id @default(autoincrement())
   propertyId  Int
   property    Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
-  data        Bytes
-  mimeType    String   @db.VarChar(100)
+  url         String   @default("") @db.VarChar(500)
   title       String?  @db.VarChar(150)
   description String?  @db.Text
   createdAt   DateTime @default(now())
@@ -173,8 +170,7 @@ model RoomImage {
   id        Int      @id @default(autoincrement())
   roomId    Int
   room      Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
-  data      Bytes
-  mimeType  String   @db.VarChar(100)
+  url       String   @default("") @db.VarChar(500)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -205,8 +201,7 @@ model PackageImage {
   id        Int      @id @default(autoincrement())
   packageId Int
   package   Package  @relation(fields: [packageId], references: [id], onDelete: Cascade)
-  data      Bytes
-  mimeType  String   @db.VarChar(100)
+  url       String   @default("") @db.VarChar(500)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

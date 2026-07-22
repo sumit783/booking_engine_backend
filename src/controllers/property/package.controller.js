@@ -14,15 +14,10 @@ const formatPackage = (pkg, req) => {
   }
 
   if (pkg.images) {
-    // Generate absolute URLs using req context to match other image endpoints
-    const protocol = req.protocol;
-    const host = req.get("host");
-    const baseUrl = `${protocol}://${host}`;
-
     formatted.images = pkg.images.map((img) => ({
       _id: img.id,
       id: img.id,
-      url: `${baseUrl}/api/v1/properties/packages/images/${img.id}`,
+      url: img.url,
     }));
   }
   return formatted;
@@ -82,8 +77,7 @@ export const createPackage = asyncHandler(async (req, res) => {
       await prisma.packageImage.create({
         data: {
           packageId: pkg.id,
-          data: file.buffer,
-          mimeType: file.mimetype,
+          url: file.path,
         },
       });
     }
@@ -163,8 +157,7 @@ export const updatePackage = asyncHandler(async (req, res) => {
       await prisma.packageImage.create({
         data: {
           packageId: packageId,
-          data: file.buffer,
-          mimeType: file.mimetype,
+          url: file.path,
         },
       });
     }
@@ -242,7 +235,6 @@ export const getPropertyPackages = asyncHandler(async (req, res) => {
   );
 });
 
-// GET /api/v1/properties/packages/images/:imageId
 export const getPackageImage = asyncHandler(async (req, res) => {
   const imageId = Number(req.params.imageId);
 
@@ -250,10 +242,9 @@ export const getPackageImage = asyncHandler(async (req, res) => {
     where: { id: imageId },
   });
 
-  if (!image) {
+  if (!image || !image.url) {
     throw new ApiError(404, "Image not found");
   }
 
-  res.set("Content-Type", image.mimeType);
-  res.send(image.data);
+  res.redirect(image.url);
 });

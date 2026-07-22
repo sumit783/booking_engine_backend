@@ -2,7 +2,7 @@ import { prisma } from "../../config/db.js";
 import ApiError from "../../utils/apiError.js";
 import ApiResponse from "../../utils/apiResponse.js";
 import asyncHandler from "../../utils/asyncHandler.js";
-import { fileToBase64 } from "../../middleware/upload.middleware.js";
+import { fileUrl } from "../../middleware/upload.middleware.js";
 import Razorpay from "razorpay";
 
 
@@ -77,8 +77,8 @@ const formatProperty = (property) => {
   };
 
   // Convert raw buffers to endpoints
-  formatted.logo = property.logo ? `/api/v1/properties/${property.id}/logo` : null;
-  formatted.coverImage = property.coverImage ? `/api/v1/properties/${property.id}/cover` : null;
+  formatted.logo = property.logo ? property.logo : null;
+  formatted.coverImage = property.coverImage ? property.coverImage : null;
 
   if (property.gallery) {
     formatted.gallery = property.gallery.map((img) => ({
@@ -91,8 +91,7 @@ const formatProperty = (property) => {
   }
 
   // Remove actual buffer fields so we don't send huge payloads
-  delete formatted.logoMimeType;
-  delete formatted.coverImageMimeType;
+  // Remove actual buffer fields so we don't send huge payloads
 
   return formatted;
 };
@@ -340,12 +339,10 @@ export const updateMedia = asyncHandler(async (req, res) => {
 
   const data = {};
   if (logoFile) {
-    data.logo = logoFile.buffer;
-    data.logoMimeType = logoFile.mimetype;
+    data.logo = logoFile.path;
   }
   if (coverImageFile) {
-    data.coverImage = coverImageFile.buffer;
-    data.coverImageMimeType = coverImageFile.mimetype;
+    data.coverImage = coverImageFile.path;
   }
 
   if (Object.keys(data).length > 0) {
@@ -358,10 +355,9 @@ export const updateMedia = asyncHandler(async (req, res) => {
   if (galleryFiles && galleryFiles.length > 0) {
     for (const file of galleryFiles) {
       await prisma.propertyGalleryImage.create({
-        data: {
+          data: {
           propertyId: property.id,
-          data: file.buffer,
-          mimeType: file.mimetype,
+          url: file.path,
           title: "",
           description: "",
         },
@@ -460,8 +456,8 @@ export const updateBank = asyncHandler(async (req, res) => {
 
   const property = await findOwnedProperty(req.params.id, req.user.id);
 
-  const cancelledCheque = fileToBase64(req.files, "cancelledCheque");
-  const panCard         = fileToBase64(req.files, "panCard");
+  const cancelledCheque = fileUrl(req.files, "cancelledCheque");
+  const panCard         = fileUrl(req.files, "panCard");
 
   const bank = {
     ...(property.bank || {}),
@@ -492,7 +488,7 @@ export const updateDocuments = asyncHandler(async (req, res) => {
 
   const updates = {};
   FIELDS.forEach((field) => {
-    const dataUri = fileToBase64(req.files, field);
+    const dataUri = fileUrl(req.files, field);
     if (dataUri) updates[field] = dataUri;
   });
 
@@ -654,48 +650,42 @@ export const getVerificationDetails = asyncHandler(async (req, res) => {
   );
 });
 
-// ── GET /api/v1/properties/:id/logo ──────────────────────────────────────────
 export const getPropertyLogo = asyncHandler(async (req, res) => {
   const property = await prisma.property.findUnique({
     where: { id: Number(req.params.id) },
-    select: { logo: true, logoMimeType: true },
+    select: { logo: true },
   });
 
   if (!property || !property.logo) {
     throw new ApiError(404, "Logo not found");
   }
 
-  res.set("Content-Type", property.logoMimeType || "image/jpeg");
-  res.send(property.logo);
+  res.redirect(property.logo);
 });
 
-// ── GET /api/v1/properties/:id/cover ─────────────────────────────────────────
 export const getPropertyCover = asyncHandler(async (req, res) => {
   const property = await prisma.property.findUnique({
     where: { id: Number(req.params.id) },
-    select: { coverImage: true, coverImageMimeType: true },
+    select: { coverImage: true },
   });
 
   if (!property || !property.coverImage) {
     throw new ApiError(404, "Cover image not found");
   }
 
-  res.set("Content-Type", property.coverImageMimeType || "image/jpeg");
-  res.send(property.coverImage);
+  res.redirect(property.coverImage);
 });
 
-// ── GET /api/v1/properties/gallery/:id ───────────────────────────────────────
 export const getGalleryImage = asyncHandler(async (req, res) => {
   const image = await prisma.propertyGalleryImage.findUnique({
     where: { id: Number(req.params.id) },
   });
 
-  if (!image) {
+  if (!image || !image.url) {
     throw new ApiError(404, "Image not found");
   }
 
-  res.set("Content-Type", image.mimeType);
-  res.send(image.data);
+  res.redirect(image.url);
 });
 
 // ── Bookings ──────────────────────────────────────────────────────────────────

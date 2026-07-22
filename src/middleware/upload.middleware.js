@@ -17,10 +17,23 @@ const docFilter = (_req, file, cb) => {
   cb(new ApiError(400, `${file.fieldname}: only images and PDF files are allowed`));
 };
 
-// ── Memory storage engines ────────────────────────────────────────────────────
+// ── Cloudinary storage engines ──────────────────────────────────────────────────
 
-const mediaStorage = multer.memoryStorage();
-const docStorage = multer.memoryStorage();
+const mediaStorage = new CloudinaryStorage({
+  cloudinary: cloudinary,
+  params: {
+    folder: "booking_engine/media",
+    allowed_formats: ["jpg", "jpeg", "png", "webp"],
+  },
+});
+
+const docStorage = new CloudinaryStorage({
+  cloudinary: cloudinary,
+  params: {
+    folder: "booking_engine/documents",
+    allowed_formats: ["jpg", "jpeg", "png", "webp", "pdf"],
+  },
+});
 
 
 // ── Named multer uploaders ────────────────────────────────────────────────────
@@ -40,8 +53,13 @@ export const uploadMedia = multer({
   { name: "gallery",    maxCount: 10 },
 ]);
 
-const templateMediaStorage = multer.memoryStorage();
-
+const templateMediaStorage = new CloudinaryStorage({
+  cloudinary: cloudinary,
+  params: {
+    folder: "booking_engine/templates",
+    allowed_formats: ["jpg", "jpeg", "png", "webp"],
+  },
+});
 /**
  * Template media upload: previewImage
  */

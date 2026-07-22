@@ -8,14 +8,10 @@ const formatRoom = (room, req) => {
   if (!room) return null;
   const formatted = { ...room };
   if (room.images) {
-    const protocol = req ? req.protocol : "http";
-    const host = req ? req.get("host") : "localhost:5000";
-    const baseUrl = `${protocol}://${host}`;
-
     formatted.images = room.images.map((img) => ({
       _id: img.id,
       id: img.id,
-      url: `${baseUrl}/api/v1/properties/rooms/images/${img.id}`,
+      url: img.url,
     }));
   }
   return formatted;
@@ -93,8 +89,7 @@ export const createRoom = asyncHandler(async (req, res) => {
       await prisma.roomImage.create({
         data: {
           roomId: room.id,
-          data: file.buffer,
-          mimeType: file.mimetype,
+          url: file.path,
         },
       });
     }
@@ -146,18 +141,16 @@ export const getRooms = asyncHandler(async (req, res) => {
   );
 });
 
-// GET /api/v1/properties/rooms/images/:id
 export const getRoomImage = asyncHandler(async (req, res) => {
   const image = await prisma.roomImage.findUnique({
     where: { id: Number(req.params.id) },
   });
 
-  if (!image) {
+  if (!image || !image.url) {
     throw new ApiError(404, "Room image not found");
   }
 
-  res.set("Content-Type", image.mimeType);
-  res.send(image.data);
+  res.redirect(image.url);
 });
 
 // PATCH /api/v1/properties/:id/rooms/:roomId
@@ -240,8 +233,7 @@ export const updateRoom = asyncHandler(async (req, res) => {
       await prisma.roomImage.create({
         data: {
           roomId: roomId,
-          data: file.buffer,
-          mimeType: file.mimetype,
+          url: file.path,
         },
       });
     }
