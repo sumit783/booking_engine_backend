@@ -226,7 +226,29 @@ export const updateRoom = asyncHandler(async (req, res) => {
     },
   });
 
-  // 5. Save new images if uploaded
+  // 5. Handle image deletion if requested
+  const rawImagesToDelete = req.body["imagesToDelete[]"] || req.body.imagesToDelete;
+  if (rawImagesToDelete !== undefined) {
+    let parsedImagesToDelete = [];
+    if (Array.isArray(rawImagesToDelete)) {
+      parsedImagesToDelete = rawImagesToDelete.map(id => Number(id));
+    } else if (typeof rawImagesToDelete === "string") {
+      parsedImagesToDelete = rawImagesToDelete.split(",").map(id => Number(id.trim())).filter(id => id);
+    } else {
+      parsedImagesToDelete = [Number(rawImagesToDelete)];
+    }
+    
+    if (parsedImagesToDelete.length > 0) {
+      await prisma.roomImage.deleteMany({
+        where: {
+          id: { in: parsedImagesToDelete },
+          roomId: roomId,
+        },
+      });
+    }
+  }
+
+  // 6. Save new images if uploaded
   const images = req.files?.images;
   if (images && images.length > 0) {
     for (const file of images) {

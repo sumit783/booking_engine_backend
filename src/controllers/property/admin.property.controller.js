@@ -35,8 +35,8 @@ const formatProperty = (property, req) => {
     delete formatted.user;
   }
 
-  delete formatted.logoMimeType;
-  delete formatted.coverImageMimeType;
+  delete formatted.logo;
+  delete formatted.coverImage;
 
   return formatted;
 };
