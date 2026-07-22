@@ -85,7 +85,7 @@ export const getAllPublicProperties = asyncHandler(async (req, res) => {
       propertyType: true,
       description: true,
       location: true,
-      coverImageMimeType: true,
+      coverImage: true,
       website: true,
     },
     orderBy: { createdAt: "desc" }
@@ -101,7 +101,7 @@ export const getAllPublicProperties = asyncHandler(async (req, res) => {
     description: p.description,
     location: p.location,
     website: p.website,
-    coverImageUrl: p.coverImageMimeType ? `${baseUrl}/api/v1/properties/${p.id}/cover` : null,
+    coverImageUrl: p.coverImage ? p.coverImage : null,
   }));
 
   res.status(200).json(
@@ -143,7 +143,7 @@ export const getPublicRooms = asyncHandler(async (req, res) => {
   const allRooms = await prisma.room.findMany({
     where: whereClause,
     include: { 
-      images: { select: { id: true, mimeType: true } },
+      images: { select: { id: true, url: true } },
       bookings: true,
       blocks: true 
     },
@@ -193,7 +193,7 @@ export const getPublicRooms = asyncHandler(async (req, res) => {
     amenities: room.amenities || [],
     images: room.images.map((img) => ({
       id: img.id,
-      url: `${baseUrl}/api/v1/properties/rooms/images/${img.id}`,
+      url: img.url,
     })),
   }));
 
@@ -251,7 +251,7 @@ export const getPublicPackages = asyncHandler(async (req, res) => {
 
   let packages = await prisma.package.findMany({
     where: whereClause,
-    include: { images: { select: { id: true, mimeType: true } } },
+    include: { images: { select: { id: true, url: true } } },
     orderBy: { createdAt: "asc" },
   });
 
@@ -274,7 +274,7 @@ export const getPublicPackages = asyncHandler(async (req, res) => {
     activities: pkg.activities || [],
     images: pkg.images.map((img) => ({
       id: img.id,
-      url: `${baseUrl}/api/v1/properties/packages/images/${img.id}`,
+      url: img.url,
     })),
   }));
 
@@ -317,7 +317,7 @@ export const getFeaturedRooms = asyncHandler(async (req, res) => {
 
   const rooms = await prisma.room.findMany({
     where: { propertyId: property.id },
-    include: { images: { select: { id: true, mimeType: true } } },
+    include: { images: { select: { id: true, url: true } } },
     orderBy: { createdAt: "asc" },
     take: 3,
   });
@@ -333,7 +333,7 @@ export const getFeaturedRooms = asyncHandler(async (req, res) => {
     amenities: room.amenities || [],
     images: room.images.map((img) => ({
       id: img.id,
-      url: `${baseUrl}/api/v1/properties/rooms/images/${img.id}`,
+      url: img.url,
     })),
   }));
 
@@ -355,7 +355,7 @@ export const getFeaturedPackages = asyncHandler(async (req, res) => {
 
   const packages = await prisma.package.findMany({
     where: { propertyId: property.id, isDeleted: false },
-    include: { images: { select: { id: true, mimeType: true } } },
+    include: { images: { select: { id: true, url: true } } },
     orderBy: { createdAt: "asc" },
     take: 3,
   });
@@ -369,7 +369,7 @@ export const getFeaturedPackages = asyncHandler(async (req, res) => {
     activities: pkg.activities || [],
     images: pkg.images.map((img) => ({
       id: img.id,
-      url: `${baseUrl}/api/v1/properties/packages/images/${img.id}`,
+      url: img.url,
     })),
   }));
 
